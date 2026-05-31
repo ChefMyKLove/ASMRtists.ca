@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "canvas-cosmic-cart",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "@tanstack/react-start/server-entry",
+
+  // Custom domain — ASMRprints.com must be on your Cloudflare account (zone).
+  // After `npm run cf:deploy`, go to:
+  //   Cloudflare Dashboard → Workers & Pages → canvas-cosmic-cart → Settings → Domains & Routes
+  // …and add asmrprints.com and www.asmrprints.com as Custom Domains there.
+  // OR add them here once the zone is active:
+  // "routes": [
+  //   { "pattern": "asmrprints.com/*", "zone_name": "asmrprints.com" },
+  //   { "pattern": "www.asmrprints.com/*", "zone_name": "asmrprints.com" }
+  // ],
+}

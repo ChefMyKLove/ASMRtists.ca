@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+web/.env.local
+shop/.env
+scripts/.env
+
+# Next.js
+web/.next/
+web/out/
+
+# Cloudflare / Wrangler
+shop/.wrangler/
+shop/dist/
+
+# Build outputs
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+scripts/__pycache__/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Bun
+bun.lockb
