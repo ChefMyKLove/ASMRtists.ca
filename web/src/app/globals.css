@@ -1,0 +1,314 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   ASMRtists.ca — Unified design system
+   Warm deep-dark gallery base · Cormorant Garamond display type
+   Rainbow aurora accents · Editorial glassmorphism
+   ============================================================ */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-cormorant);
+  --font-display: var(--font-cormorant);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  --radius: 0.375rem;
+
+  /* Light mode (fallback — app renders dark by default) */
+  --background: oklch(0.985 0.005 70);
+  --foreground: oklch(0.15 0.015 55);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.015 55);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.015 55);
+  --primary: oklch(0.18 0.015 55);
+  --primary-foreground: oklch(0.985 0.005 70);
+  --secondary: oklch(0.95 0.008 70);
+  --secondary-foreground: oklch(0.18 0.015 55);
+  --muted: oklch(0.95 0.008 70);
+  --muted-foreground: oklch(0.50 0.01 65);
+  --accent: oklch(0.70 0.12 315);
+  --accent-foreground: oklch(0.985 0.005 70);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.90 0.008 70);
+  --input: oklch(0.90 0.008 70);
+  --ring: oklch(0.65 0.08 315);
+  --chart-1: oklch(0.72 0.12 315);
+  --chart-2: oklch(0.70 0.10 25);
+  --chart-3: oklch(0.68 0.09 200);
+  --chart-4: oklch(0.72 0.10 140);
+  --chart-5: oklch(0.65 0.08 265);
+  --sidebar: oklch(0.985 0.005 70);
+  --sidebar-foreground: oklch(0.15 0.015 55);
+  --sidebar-primary: oklch(0.18 0.015 55);
+  --sidebar-primary-foreground: oklch(0.985 0.005 70);
+  --sidebar-accent: oklch(0.95 0.008 70);
+  --sidebar-accent-foreground: oklch(0.18 0.015 55);
+  --sidebar-border: oklch(0.90 0.008 70);
+  --sidebar-ring: oklch(0.65 0.08 315);
+}
+
+.dark {
+  /* Warm espresso dark — deep gallery, not cold void */
+  --background: oklch(0.11 0.015 55);
+  --foreground: oklch(0.96 0.005 70);
+  --card: oklch(0.16 0.018 55);
+  --card-foreground: oklch(0.96 0.005 70);
+  --popover: oklch(0.16 0.018 55);
+  --popover-foreground: oklch(0.96 0.005 70);
+  --primary: oklch(0.93 0.006 70);
+  --primary-foreground: oklch(0.16 0.018 55);
+  --secondary: oklch(0.22 0.020 55);
+  --secondary-foreground: oklch(0.96 0.005 70);
+  --muted: oklch(0.22 0.020 55);
+  --muted-foreground: oklch(0.65 0.010 65);
+  --accent: oklch(0.70 0.12 315);
+  --accent-foreground: oklch(0.96 0.005 70);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.65 0.08 315);
+  --chart-1: oklch(0.72 0.12 315);
+  --chart-2: oklch(0.70 0.10 25);
+  --chart-3: oklch(0.68 0.09 200);
+  --chart-4: oklch(0.72 0.10 140);
+  --chart-5: oklch(0.65 0.08 265);
+  --sidebar: oklch(0.16 0.018 55);
+  --sidebar-foreground: oklch(0.96 0.005 70);
+  --sidebar-primary: oklch(0.70 0.12 315);
+  --sidebar-primary-foreground: oklch(0.96 0.005 70);
+  --sidebar-accent: oklch(0.22 0.020 55);
+  --sidebar-accent-foreground: oklch(0.96 0.005 70);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.65 0.08 315);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply font-sans;
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    background-color: #100e09;
+    color: oklch(0.96 0.005 70);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+    font-weight: 400;
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ============================================================
+   Utility classes
+   ============================================================ */
+
+/* Aurora/rainbow gradient text — shared brand signature */
+.rainbow-text {
+  background: linear-gradient(
+    135deg,
+    #c4b0ff 0%,
+    #ffb3d1 25%,
+    #ffd6a5 50%,
+    #b3f0c8 75%,
+    #a6d8ff 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Warm aurora glassmorphism — editorial card surface */
+.glass {
+  background: rgba(255, 235, 200, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 220, 180, 0.09);
+}
+
+/* Slightly more opaque glass for nav/sidebar */
+.glass-heavy {
+  background: rgba(255, 235, 200, 0.07);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 220, 180, 0.12);
+}
+
+/* Aurora gradient background — warm gallery atmosphere */
+.aurora-bg {
+  background:
+    radial-gradient(ellipse 80% 50% at 20% 40%, rgba(160, 100, 220, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 60%, rgba(220, 110, 160, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 60% at 50% 10%, rgba(220, 160, 80, 0.07) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 50% at 10% 85%, rgba(180, 120, 200, 0.06) 0%, transparent 60%),
+    #100e09;
+}
+
+/* Gradient border glow — use on featured cards */
+.gradient-border {
+  position: relative;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #c4b0ff, #ffb3d1, #ffd6a5, #b3f0c8, #a6d8ff);
+  z-index: -1;
+  opacity: 0.5;
+}
+
+/* Scrolling ticker animation */
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+  animation: ticker linear infinite;
+}
+
+/* ============================================================
+   Splash entrance — clip-path wipe reveal (clearly visible)
+   ============================================================ */
+
+@keyframes wipeIn {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0% 0 0); }
+}
+
+.animate-wipe {
+  animation: wipeIn 0.7s cubic-bezier(0.4, 0, 0.2, 1) both;
+  animation-delay: var(--wipe-delay, 0ms);
+}
+
+/* ============================================================
+   Hero carousel — Ken Burns via CSS transition
+   Triggered by toggling .carousel-img-active class in React
+   ============================================================ */
+
+.carousel-img {
+  transform: scale(1.0);
+  transition: transform 7000ms ease-in-out;
+}
+
+.carousel-img-active {
+  transform: scale(1.07);
+}
+
+/* ============================================================
+   Aurora atmosphere orbs — absolute-positioned within hero
+   ============================================================ */
+
+@keyframes auroraFloat {
+  0%, 100% { transform: translate(0, 0) scale(1);       opacity: 1;   }
+  33%       { transform: translate(4%, -5%) scale(1.12); opacity: 0.85; }
+  66%       { transform: translate(-3%, 4%) scale(0.92); opacity: 0.9; }
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.aurora-orb-1 {
+  width: 700px;
+  height: 500px;
+  top: -15%;
+  left: -10%;
+  background: rgba(196, 176, 255, 0.35);
+  filter: blur(90px);
+  animation: auroraFloat 14s ease-in-out infinite;
+}
+
+.aurora-orb-2 {
+  width: 500px;
+  height: 500px;
+  top: 30%;
+  right: -8%;
+  background: rgba(255, 179, 209, 0.28);
+  filter: blur(80px);
+  animation: auroraFloat 19s ease-in-out infinite reverse;
+  animation-delay: -6s;
+}
+
+.aurora-orb-3 {
+  width: 550px;
+  height: 350px;
+  bottom: -5%;
+  left: 20%;
+  background: rgba(163, 230, 196, 0.20);
+  filter: blur(85px);
+  animation: auroraFloat 24s ease-in-out infinite;
+  animation-delay: -11s;
+}
+
+/* ============================================================
+   Audience carousel progress bar
+   ============================================================ */
+
+@keyframes audience-progress {
+  from { width: 0% }
+  to   { width: 100% }
+}
+
+.audience-progress-bar {
+  animation: audience-progress 4.5s linear forwards;
+}

@@ -1,0 +1,37 @@
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+
+export default async function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) redirect('/login')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (profile?.role !== 'admin') redirect('/dashboard')
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex items-center gap-3">
+          <h1 className="text-xl font-bold">Admin</h1>
+          <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">
+            Restricted
+          </span>
+        </div>
+        {children}
+      </div>
+    </div>
+  )
+}
