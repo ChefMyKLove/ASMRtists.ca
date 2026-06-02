@@ -1,7 +1,7 @@
 ---
 type: dev-status
 project: A.S.M.R
-author: claude
+author: ChefMyKLove
 updated: 2026-04-21
 ---
 

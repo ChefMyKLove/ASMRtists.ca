@@ -40,6 +40,8 @@ npm-debug.log*
 Thumbs.db
 
 # Editor
+.claude/
+.obsidian/
 .vscode/
 .idea/
 *.swp

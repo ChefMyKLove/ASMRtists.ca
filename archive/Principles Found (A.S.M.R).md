@@ -1,7 +1,7 @@
 ---
 type: note
 project: A.S.M.R
-author: claude
+author: ChefMyKLove
 ---
 
 # Principles Found — A.S.M.R
