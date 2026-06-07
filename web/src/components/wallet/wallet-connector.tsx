@@ -42,9 +42,12 @@ const WALLET_ICONS: Record<WalletType, string> = {
 interface WalletConnectorProps {
   onConnected?: (conn: WalletConnection) => void
   onDisconnected?: () => void
+  /** When true, programmatically opens the connect dialog */
+  forceOpen?: boolean
+  onForceOpenHandled?: () => void
 }
 
-export function WalletConnector({ onConnected, onDisconnected }: WalletConnectorProps) {
+export function WalletConnector({ onConnected, onDisconnected, forceOpen, onForceOpenHandled }: WalletConnectorProps) {
   const [open, setOpen] = useState(false)
   const [connection, setConnection] = useState<WalletConnection | null>(null)
   const [available, setAvailable] = useState<WalletType[]>([])
@@ -59,6 +62,14 @@ export function WalletConnector({ onConnected, onDisconnected }: WalletConnector
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (forceOpen) {
+      handleOpen()
+      onForceOpenHandled?.()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceOpen])
 
   async function handleOpen() {
     setError(null)
@@ -110,7 +121,7 @@ export function WalletConnector({ onConnected, onDisconnected }: WalletConnector
         >
           <Wallet className="h-4 w-4" />
           <span className="hidden sm:inline font-mono text-xs">
-            {truncateAddress(connection.bsvAddress, 5)}
+            {truncateAddress(connection.ordAddress, 5)}
           </span>
         </Button>
         <Button

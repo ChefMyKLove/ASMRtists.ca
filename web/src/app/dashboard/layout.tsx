@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DashboardSidebar } from '@/components/dashboard/sidebar'
+import { Navbar } from '@/components/layout/navbar'
 
 export default async function DashboardLayout({
   children,
@@ -29,15 +30,25 @@ export default async function DashboardLayout({
   const avatarUrl = profile?.avatar_url ?? null
   const email = user.email ?? ''
 
+  const navUser = {
+    id: user.id,
+    email,
+    displayName,
+    avatarUrl: avatarUrl ?? undefined,
+  }
+
   return (
-    <div className="flex min-h-screen">
-      <DashboardSidebar
-        activeRole={activeRole}
-        displayName={displayName}
-        avatarUrl={avatarUrl}
-        email={email}
-      />
-      <main className="flex-1 min-w-0 p-6">{children}</main>
+    <div className="flex min-h-screen flex-col">
+      <Navbar user={navUser} />
+      <div className="flex flex-1 min-h-0">
+        <DashboardSidebar
+          activeRole={activeRole}
+          displayName={displayName}
+          avatarUrl={avatarUrl}
+          email={email}
+        />
+        <main className="flex-1 min-w-0 p-6">{children}</main>
+      </div>
     </div>
   )
 }

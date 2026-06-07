@@ -80,7 +80,7 @@ function BsvGlyph() {
   )
 }
 
-export function HeroCarousel({ slides, autoPlayInterval = 6000 }: HeroCarouselProps) {
+export function HeroCarousel({ slides, autoPlayInterval = 6720 }: HeroCarouselProps) {
   const [current, setCurrent] = useState(0)
 
   const next = useCallback(() => {
@@ -121,6 +121,7 @@ export function HeroCarousel({ slides, autoPlayInterval = 6000 }: HeroCarouselPr
               index === current && 'carousel-img-active'
             )}
             priority={index === 0}
+            loading={index === 0 ? 'eager' : 'lazy'}
             sizes="(max-width: 1024px) 100vw, 420px"
           />
 

@@ -106,23 +106,31 @@ async function getChefData() {
         .select('id, title, storage_path')
         .eq('collection_id', collection.id)
         .order('position')
-        .limit(4)
+        .limit(8)
     : { data: [] }
 
   const artworkUrls = (artworks ?? [])
     .filter((a) => a.storage_path)
     .map((a) => storageUrl(supabaseUrl, a.storage_path))
 
+  // Count actual uploaded artworks — artist_profiles.piece_count is not kept in sync
+  const { count: actualCount } = collection
+    ? await admin
+        .from('artwork')
+        .select('id', { count: 'exact', head: true })
+        .eq('collection_id', collection.id)
+    : { count: 0 }
+
   return {
     displayName: artist.stage_name ?? profile.display_name ?? 'chefmyklove',
     bio: artist.bio ?? 'Bold, expressive art that hits like a great meal — unforgettable and made with love.',
     avatarUrl: (artist.avatar_url ?? profile.avatar_url) as string | null,
     bannerUrl: (artist.banner_url ?? profile.banner_url ?? artworkUrls[0] ?? null) as string | null,
-    pieceCount: artist.piece_count ?? 0,
+    pieceCount: actualCount ?? collection?.piece_count ?? 0,
     collection: collection
       ? {
           title: collection.title as string,
-          description: (collection.description ?? 'A vibrant series of spectrum-defying works inscribed on-chain — every piece a unique refraction of colour and light.') as string,
+          description: (collection.description ?? 'Whimsical light refractions captured and manipulated by hand, never AI to give you Volume One. 64 distinct and beautiful pieces of whimsy.') as string,
           slug: collection.slug as string,
           pieceCount: (collection.piece_count ?? 0) as number,
         }
@@ -138,7 +146,10 @@ export default async function SplashPage() {
   // Replace the chefmyklove placeholder slides with real artwork images;
   // fall back to the Unsplash placeholder if we have no real images yet.
   const chefImg0 = chef?.artworkUrls[0] ?? 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&q=80'
-  const chefImg1 = chef?.artworkUrls[1] ?? chef?.artworkUrls[0] ?? 'https://images.unsplash.com/photo-1547891654-e66ed7ebb968?w=1200&q=80'
+  const chefImg1 = chef?.artworkUrls[1] ?? chefImg0
+  const chefImg2 = chef?.artworkUrls[2] ?? chefImg0
+  const chefImg3 = chef?.artworkUrls[3] ?? chefImg1
+  const chefImg4 = chef?.artworkUrls[4] ?? chefImg0
 
   const featuredSlides = [
     {
@@ -153,10 +164,10 @@ export default async function SplashPage() {
     },
     {
       id: '2',
-      imageUrl: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=1200&q=80',
-      artistName: 'Neon Moth',
+      imageUrl: chefImg1,
+      artistName: chef?.displayName ?? 'chefmyklove',
       artworkTitle: 'Signal & Noise',
-      artistSlug: 'neon-moth',
+      artistSlug: 'chefmyklove',
       audienceTag: 'For Ordinal Collectors',
       subhead: 'Own the Ordinal. Hold the stake.',
       body: 'Every artwork is inscribed as a Bitcoin ordinal. You receive permanent, on-chain provenance — a verifiable claim to rewards as the artist grows. As their reputation rises, so does yours.',
@@ -164,20 +175,20 @@ export default async function SplashPage() {
     },
     {
       id: '3',
-      imageUrl: 'https://images.unsplash.com/photo-1557672172-298e090bd0f1?w=1200&q=80',
-      artistName: 'Lunar Press',
-      artworkTitle: 'Pastel Void',
-      artistSlug: 'lunar-press',
+      imageUrl: chefImg2,
+      artistName: chef?.displayName ?? 'chefmyklove',
+      artworkTitle: 'Original Work',
+      artistSlug: 'chefmyklove',
       audienceTag: 'For Artists',
       subhead: 'Your collectors are your marketing team!',
       body: "When someone buys your ordinal, they hold a verifiable on-chain stake in your work — your growth is their imperative. They're naturally incentivised to promote you. You get paid automatically on every sale — Stripe handles the payouts, Shopify runs the storefront. No chasing invoices. Everyone wins.",
     },
     {
       id: '4',
-      imageUrl: 'https://images.unsplash.com/photo-1544967082-d9d25d867d66?w=1200&q=80',
-      artistName: 'The Gallery',
+      imageUrl: chefImg3,
+      artistName: chef?.displayName ?? 'chefmyklove',
       artworkTitle: 'Curated Works',
-      artistSlug: 'gallery',
+      artistSlug: 'chefmyklove',
       audienceTag: 'For Curators',
       subhead: 'Shape what the world collects next.',
       body: "Discover artists early, build collections with provenance, and earn a share of every sale you facilitate. Curation isn't just taste here — it's a role with real weight and real reward.",
@@ -185,7 +196,7 @@ export default async function SplashPage() {
     },
     {
       id: '5',
-      imageUrl: chefImg1,
+      imageUrl: chefImg4,
       artistName: chef?.displayName ?? 'chefmyklove',
       artworkTitle: 'Featured Work',
       artistSlug: 'chefmyklove',
@@ -211,7 +222,7 @@ export default async function SplashPage() {
   // ── Featured collections ────────────────────────────────────────────────────
   const collectionData = chef?.collection ?? {
     title: 'Ordinal Rainbows',
-    description: 'A vibrant series of spectrum-defying works inscribed on-chain — every piece a unique refraction of colour and light.',
+    description: 'Whimsical light refractions captured and manipulated by hand, never AI to give you Volume One. 64 distinct and beautiful pieces of whimsy.',
     slug: 'ordinalrainbows',
     pieceCount: 0,
   }

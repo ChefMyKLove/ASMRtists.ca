@@ -17,6 +17,7 @@ import { WalletConnector } from '@/components/wallet/wallet-connector'
 
 const navLinks = [
   { href: '/browse', label: 'Browse' },
+  { href: '/ordinals', label: 'Marketplace' },
   { href: '/about', label: 'About' },
 ]
 

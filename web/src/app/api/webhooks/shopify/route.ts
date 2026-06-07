@@ -7,7 +7,7 @@
  *   2. Matches the line item to an artwork via shopify_product_id
  *   3. Calculates revenue split (artist / curator / platform)
  *   4. Creates print_orders row + treasury_ledger entries
- *   5. Queues MNEE distribution to ordinal holders
+ *   5. Upserts reward_allocations so ordinal holders can claim MNEE
  *
  * Setup in Shopify: Settings → Notifications → Webhooks
  *   Topic: orders/paid
@@ -17,7 +17,9 @@
 
 import { createHmac, timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+
+export const runtime = 'nodejs'
 
 // ─── Shopify webhook payload (partial — only fields we use) ──────────────────
 
@@ -63,34 +65,33 @@ interface RevenueSplit {
   grossCents: number
   productionCostCents: number
   platformCents: number
-  curatorCents: number
+  holderCents: number    // the pool distributed to inscription holders as MNEE
   artistCents: number
 }
 
 async function calculateSplit(
   grossCents: number,
-  supabase: Awaited<ReturnType<typeof createClient>>
+  admin: ReturnType<typeof createAdminClient>,
 ): Promise<RevenueSplit> {
-  const { data } = await supabase
+  const { data } = await admin
     .from('platform_settings')
     .select('value')
     .eq('key', 'revenue_split')
     .single()
 
-  const split = data?.value as { artist_pct: number; holder_pct: number; platform_pct: number }
+  const split = data?.value as { artist_pct: number; holder_pct: number; platform_pct: number } | undefined
   const platformPct = (split?.platform_pct ?? 5) / 100
   const holderPct   = (split?.holder_pct ?? 25) / 100
 
-  // Production cost placeholder — ideally fetched from Shopify/Printify
-  // For now use 40% of gross as a conservative estimate; refine with real data
+  // Production cost placeholder — 40% of gross; refine with real Printify cost data
   const productionCostCents = Math.round(grossCents * 0.4)
   const net = grossCents - productionCostCents
 
   const platformCents = Math.round(net * platformPct)
-  const curatorCents  = Math.round(net * holderPct)
-  const artistCents   = net - platformCents - curatorCents
+  const holderCents   = Math.round(net * holderPct)
+  const artistCents   = net - platformCents - holderCents
 
-  return { grossCents, productionCostCents, platformCents, curatorCents, artistCents }
+  return { grossCents, productionCostCents, platformCents, holderCents, artistCents }
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -105,7 +106,6 @@ export async function POST(req: NextRequest) {
 
   const topic = req.headers.get('x-shopify-topic')
   if (topic !== 'orders/paid') {
-    // Acknowledge non-orders/paid events so Shopify doesn't retry
     return NextResponse.json({ ok: true, ignored: true })
   }
 
@@ -116,13 +116,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const admin = createAdminClient()
 
   for (const item of order.line_items) {
     const shopifyProductGid = `gid://shopify/Product/${item.product_id}`
 
-    // Find the matching artwork via print_products
-    const { data: product } = await supabase
+    // Find the matching artwork via print_products (admin client bypasses RLS)
+    const { data: product } = await admin
       .from('print_products')
       .select(`
         id,
@@ -131,6 +131,8 @@ export async function POST(req: NextRequest) {
         artwork:artwork_id (
           id,
           artist_id,
+          inscription_txid,
+          inscription_outpoint,
           collections ( curator_id )
         )
       `)
@@ -138,46 +140,52 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (!product) {
-      // Line item doesn't map to a tracked artwork — skip
-      console.warn(`[shopify-webhook] No print_product found for Shopify product ${item.product_id}`)
+      console.warn(`[shopify-webhook] No print_product for Shopify product ${item.product_id}`)
       continue
     }
 
     const grossCents = Math.round(parseFloat(item.price) * item.quantity * 100)
-    const split = await calculateSplit(grossCents, supabase)
+    const split = await calculateSplit(grossCents, admin)
 
     // Insert print_orders row
-    const { data: printOrder, error: orderErr } = await supabase
+    const { data: printOrder, error: orderErr } = await admin
       .from('print_orders')
       .insert({
-        artwork_id:           product.artwork_id,
-        shopify_order_id:     `gid://shopify/Order/${order.id}`,
-        shopify_order_number: String(order.order_number),
-        buyer_email:          order.email || null,
-        product_type:         product.product_type,
-        variant_title:        item.variant_title,
-        quantity:             item.quantity,
-        unit_price_cents:     Math.round(parseFloat(item.price) * 100),
+        artwork_id:            product.artwork_id,
+        shopify_order_id:      `gid://shopify/Order/${order.id}`,
+        shopify_order_number:  String(order.order_number),
+        buyer_email:           order.email || null,
+        product_type:          product.product_type,
+        variant_title:         item.variant_title,
+        quantity:              item.quantity,
+        unit_price_cents:      Math.round(parseFloat(item.price) * 100),
         production_cost_cents: split.productionCostCents,
-        gross_revenue_cents:  split.grossCents,
-        platform_fee_cents:   split.platformCents,
-        curator_share_cents:  split.curatorCents,
-        artist_share_cents:   split.artistCents,
-        status:               'pending',
-        shopify_order_data:   order,
+        gross_revenue_cents:   split.grossCents,
+        platform_fee_cents:    split.platformCents,
+        curator_share_cents:   split.holderCents,
+        artist_share_cents:    split.artistCents,
+        status:                'pending',
+        shopify_order_data:    order,
       })
       .select('id')
       .single()
 
     if (orderErr || !printOrder) {
-      console.error('[shopify-webhook] Failed to insert print_order:', orderErr)
+      console.error('[shopify-webhook] print_order insert failed:', orderErr)
       continue
     }
 
-    const artwork = product.artwork as any
-    const curatorId = artwork?.collections?.curator_id ?? null
+    const artwork = product.artwork as unknown as {
+      id: string
+      artist_id: string
+      inscription_txid: string | null
+      inscription_outpoint: string | null
+      collections: Array<{ curator_id: string | null }> | null
+    } | null
 
-    // Insert treasury_ledger entries: artist + curator + platform
+    const curatorId = artwork?.collections?.[0]?.curator_id ?? null
+
+    // Treasury ledger — artist + platform (+ curator if set)
     type LedgerRow = {
       user_id: string
       order_id: string
@@ -187,35 +195,66 @@ export async function POST(req: NextRequest) {
     }
     const ledgerRows: LedgerRow[] = [
       {
-        user_id:    artwork.artist_id,
+        user_id:    artwork?.artist_id ?? '',
         order_id:   printOrder.id,
-        earned_as:  'artist' as const,
-        type:       'print_sale' as const,
+        earned_as:  'artist',
+        type:       'print_sale',
         amount_usd: split.artistCents / 100,
       },
       {
-        user_id:    process.env.PLATFORM_USER_ID!, // admin user ID seeded at setup
+        user_id:    process.env.PLATFORM_USER_ID ?? '',
         order_id:   printOrder.id,
-        earned_as:  'platform' as const,
-        type:       'platform_fee' as const,
+        earned_as:  'platform',
+        type:       'platform_fee',
         amount_usd: split.platformCents / 100,
       },
     ]
-
     if (curatorId) {
       ledgerRows.push({
         user_id:    curatorId,
         order_id:   printOrder.id,
-        earned_as:  'curator' as const,
-        type:       'curator_fee' as const,
-        amount_usd: split.curatorCents / 100,
+        earned_as:  'curator',
+        type:       'curator_fee',
+        amount_usd: split.holderCents / 100,
       })
     }
+    await admin.from('treasury_ledger').insert(ledgerRows)
 
-    await supabase.from('treasury_ledger').insert(ledgerRows)
+    // Reward allocations — accumulate MNEE for the inscription holder to claim.
+    // holderCents is USD cents; 1 MNEE ≈ $0.01 so holderCents MNEE = $holderCents/100 USD.
+    // bsv_claimable is left at 0 until BSV/USD price conversion is wired up.
+    const insOutpoint =
+      artwork?.inscription_outpoint ??
+      (artwork?.inscription_txid ? `${artwork.inscription_txid}_0` : null)
 
-    // TODO: Queue MNEE distribution to ordinal holders (Phase 2 automation)
-    // For now: manual trigger from admin dashboard
+    if (insOutpoint && split.holderCents > 0) {
+      const { data: existing } = await admin
+        .from('reward_allocations')
+        .select('id, mnee_claimable, bsv_claimable, bsv21_claimable')
+        .eq('inscription_outpoint', insOutpoint)
+        .maybeSingle()
+
+      const mneeToAdd = split.holderCents  // 1 unit = $0.01, so cents → MNEE 1:1
+
+      if (existing) {
+        await admin
+          .from('reward_allocations')
+          .update({
+            mnee_claimable: Number(existing.mnee_claimable ?? 0) + mneeToAdd,
+          })
+          .eq('id', existing.id)
+      } else {
+        await admin.from('reward_allocations').insert({
+          inscription_outpoint: insOutpoint,
+          artwork_id:           artwork?.id ?? null,
+          mnee_claimable:       mneeToAdd,
+          bsv_claimable:        0,
+          bsv21_claimable:      0,
+        })
+      }
+
+      console.log(`[shopify-webhook] reward_allocations +${mneeToAdd} MNEE for ${insOutpoint.slice(0, 12)}`)
+    }
   }
 
   return NextResponse.json({ ok: true })

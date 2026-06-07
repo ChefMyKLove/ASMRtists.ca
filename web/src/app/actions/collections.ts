@@ -196,6 +196,32 @@ export async function updateCollectionPieceCountAction(
   return { error: null }
 }
 
+export async function updateCollectionDescriptionAction(
+  collectionId: string,
+  description: string | null,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient()
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return { error: 'Not authenticated' }
+
+  const admin = createAdminClient()
+  const { data: ap } = await admin
+    .from('artist_profiles')
+    .select('id')
+    .eq('user_id', user.id)
+    .single()
+  if (!ap) return { error: 'Artist profile not found' }
+
+  const { error } = await admin
+    .from('collections')
+    .update({ description: description || null })
+    .eq('id', collectionId)
+    .eq('artist_id', ap.id)
+
+  if (error) return { error: error.message }
+  return { error: null }
+}
+
 export async function setCollectionCoverImageAction(
   collectionId: string,
   coverImageUrl: string,

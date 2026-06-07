@@ -9,7 +9,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { inscribeWithRetry } from '@/lib/bsv/inscribe'
 
 export async function POST(req: NextRequest) {
@@ -24,12 +24,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'artworkId is required' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  const admin = createAdminClient()
 
   // Load artwork row
-  const { data: artwork, error: fetchErr } = await supabase
+  const { data: artwork, error: fetchErr } = await admin
     .from('artwork')
-    .select('id, jpeg_storage_path, artist_id, collections(artist_profiles(wallets(address)))')
+    .select('id, jpeg_storage_path, artist_id')
     .eq('id', artworkId)
     .single()
 
@@ -41,23 +41,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'JPEG not ready — run ordinal_prep first' }, { status: 422 })
   }
 
-  // Resolve artist's BSV address
-  const walletAddress = (artwork as any)?.collections?.artist_profiles?.wallets?.address
+  // Resolve artist's BSV address via user_id → wallets join
+  const { data: ap } = await admin
+    .from('artist_profiles')
+    .select('user_id')
+    .eq('id', artwork.artist_id)
+    .single()
+
+  const { data: wallet } = ap
+    ? await admin.from('wallets').select('address').eq('user_id', ap.user_id).maybeSingle()
+    : { data: null }
+
+  const walletAddress = wallet?.address
   if (!walletAddress) {
     return NextResponse.json({ error: 'Artist BSV wallet address not found' }, { status: 422 })
   }
 
   // Mark as processing
-  await supabase
+  await admin
     .from('artwork')
     .update({ status: 'minting' })
     .eq('id', artworkId)
 
   try {
     // Download JPEG from Supabase Storage
-    const { data: fileData, error: dlErr } = await supabase
+    const { data: fileData, error: dlErr } = await admin
       .storage
-      .from('artwork-jpegs')
+      .from('artwork-originals')
       .download(artwork.jpeg_storage_path)
 
     if (dlErr || !fileData) throw new Error(`Storage download failed: ${dlErr?.message}`)
@@ -76,7 +86,7 @@ export async function POST(req: NextRequest) {
     })
 
     // Persist result
-    await supabase
+    await admin
       .from('artwork')
       .update({
         status: 'minted',
@@ -89,7 +99,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
 
-    await supabase
+    await admin
       .from('artwork')
       .update({ status: 'mint_error', error_message: message })
       .eq('id', artworkId)

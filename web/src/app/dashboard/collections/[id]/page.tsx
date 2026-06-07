@@ -5,8 +5,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { ImageIcon, Send, Gem, ShoppingBag, Pencil, Star } from 'lucide-react'
-import { setCollectionCoverImageAction } from '@/app/actions/collections'
+import { ImageIcon, Send, Gem, ShoppingBag, Pencil, Star, ExternalLink } from 'lucide-react'
+import { setCollectionCoverImageAction, updateCollectionDescriptionAction } from '@/app/actions/collections'
 
 export const metadata: Metadata = { title: 'Collection — Dashboard' }
 
@@ -26,6 +26,7 @@ interface Artwork {
 
 interface Collection {
   id: string
+  slug: string
   title: string
   description: string | null
   tags: string[]
@@ -96,10 +97,17 @@ export default async function CollectionDetailPage({ params }: PageProps) {
     .single()
   if (!ap) notFound()
 
+  // Get the artist's username for building the public collection URL
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('username')
+    .eq('id', user.id)
+    .maybeSingle()
+
   // Load collection — verified to belong to this artist
   const { data: collection } = await admin
     .from('collections')
-    .select('id, title, description, tags, status, piece_count, cover_image_url, created_at')
+    .select('id, slug, title, description, tags, status, piece_count, cover_image_url, created_at')
     .eq('id', id)
     .eq('artist_id', ap.id)
     .single()
@@ -123,6 +131,9 @@ export default async function CollectionDetailPage({ params }: PageProps) {
   const shopReadyCount = artworks.filter((a) => a.status === 'shop_ready').length
   const mintedCount = artworks.filter((a) => !!a.inscription_txid).length
 
+  const username = profile?.username ?? null
+  const publicUrl = username && coll.slug ? `/c/${username}/${coll.slug}` : null
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -138,11 +149,39 @@ export default async function CollectionDetailPage({ params }: PageProps) {
             >
               {STATUS_LABELS[coll.status]}
             </span>
+            {publicUrl && (
+              <Link
+                href={publicUrl}
+                className="inline-flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors"
+              >
+                <ExternalLink className="h-3 w-3" />
+                View public page
+              </Link>
+            )}
           </div>
 
-          {coll.description && (
-            <p className="text-sm text-muted-foreground max-w-prose">{coll.description}</p>
-          )}
+          <form
+            action={async (formData: FormData) => {
+              'use server'
+              const desc = (formData.get('description') as string | null)?.trim() || null
+              await updateCollectionDescriptionAction(id, desc)
+            }}
+            className="flex flex-col gap-1.5 max-w-prose"
+          >
+            <textarea
+              name="description"
+              defaultValue={coll.description ?? ''}
+              rows={3}
+              placeholder="Collection description…"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/80 placeholder:text-white/30 resize-none focus:outline-none focus:border-white/30"
+            />
+            <button
+              type="submit"
+              className="self-start text-xs text-white/40 hover:text-white/70 transition-colors px-2 py-1 rounded border border-white/10 hover:border-white/20"
+            >
+              Save description
+            </button>
+          </form>
 
           {Array.isArray(coll.tags) && coll.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">

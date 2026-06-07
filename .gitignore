@@ -39,12 +39,18 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Editor
+# Editor / local tooling
 .claude/
 .obsidian/
 .vscode/
 .idea/
 *.swp
+
+# Development notes / working docs
+archive/
+
+# Separate sub-projects not part of this submission
+ordinalrainbows/
 
 # Bun
 bun.lockb

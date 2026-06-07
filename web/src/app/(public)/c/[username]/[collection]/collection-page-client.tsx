@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
@@ -17,9 +17,9 @@ import { CollectionGrid } from '@/components/collection/collection-grid'
 import { HolderClaimPanel } from '@/components/collection/holder-claim-panel'
 import { WalletConnector } from '@/components/wallet/wallet-connector'
 import type { WalletConnection } from '@/lib/wallet/connectors'
-import { fetchUserOrdinals } from '@/lib/bsv/ordinals'
+import { signMessage } from '@/lib/wallet/connectors'
 import type { OwnedOrdinal, BalanceEntry } from '@/lib/bsv/ordinals'
-import { Settings, Printer, Copy, Check, ExternalLink, Gift, Gem } from 'lucide-react'
+import { Settings, Printer, Copy, Check, CheckCircle2, ExternalLink, Gift, Gem, Wallet, XCircle, Loader2, Coins } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,10 @@ interface CollectionPageClientProps {
   collection: CollectionData
   isOwningArtist: boolean
   priceMap?: Record<string, ShopifyPrice | null>
+}
+
+function fmt(n: number, decimals = 4): string {
+  return n === 0 ? '0' : n.toFixed(decimals).replace(/\.?0+$/, '')
 }
 
 function truncateOutpoint(outpoint: string, chars = 10): string {
@@ -84,33 +88,62 @@ export function CollectionPageClient({
   const [ownedOutpoints, setOwnedOutpoints] = useState<Set<string>>(new Set())
   const [balances, setBalances] = useState<BalanceEntry[]>([])
   const [claimPanelOpen, setClaimPanelOpen] = useState(false)
+  const [forceWalletOpen, setForceWalletOpen] = useState(false)
+  const [sidebarClaiming, setSidebarClaiming] = useState(false)
+  const [sidebarClaimResult, setSidebarClaimResult] = useState<{ ok: boolean; msg: string; txid?: string } | null>(null)
+
+  useEffect(() => {
+    setSidebarClaimResult(null)
+  }, [selectedArtwork?.id])
+
+  // Derive outpoint from txid when inscription_outpoint wasn't stored at mint time
+  function resolveOutpoint(a: CollectionArtwork): string | null {
+    return a.inscription_outpoint ?? (a.inscription_txid ? `${a.inscription_txid}_0` : null)
+  }
 
   // Outpoints in this collection that have inscriptions
   const collectionOutpointSet = new Set(
-    artworks.map((a) => a.inscription_outpoint).filter(Boolean) as string[]
+    artworks.map(resolveOutpoint).filter(Boolean) as string[]
   )
 
   async function handleWalletConnect(conn: WalletConnection) {
     setConnectedWallet(conn)
 
-    // 1. Fetch all ordinals the wallet holds
-    let ordinals: OwnedOrdinal[] = []
+    // Reverse-lookup: check which collection artworks this wallet currently owns.
+    // This is O(artworks) API calls, not O(wallet size) — safe for 14K+ ordinal wallets.
+    const outpointsToCheck = [...collectionOutpointSet]
+    const addresses = [conn.ordAddress, conn.bsvAddress].filter(Boolean)
+
+    if (outpointsToCheck.length === 0 || addresses.length === 0) return
+
+    let ownedSet = new Set<string>()
     try {
-      ordinals = await fetchUserOrdinals(conn.ordAddress)
-      setOwnedOrdinals(ordinals)
-      setOwnedOutpoints(new Set(ordinals.map((o) => o.outpoint)))
+      const res = await fetch('/api/ordinals/check-ownership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outpoints: outpointsToCheck, addresses }),
+      })
+      if (res.ok) {
+        const data = await res.json() as { ownedOutpoints?: string[] }
+        ownedSet = new Set(data.ownedOutpoints ?? [])
+      }
     } catch {
       // Non-fatal — ownership badges won't show
     }
 
-    // 2. Fetch reward balances for the outpoints that belong to this collection
-    const relevantOutpoints = ordinals
-      .map((o) => o.outpoint)
-      .filter((op) => collectionOutpointSet.has(op))
+    // Convert to OwnedOrdinal shape for compatibility with existing state consumers
+    const ordinals: OwnedOrdinal[] = [...ownedSet].map((op) => ({
+      inscriptionId: op.split('_')[0] ?? op,
+      outpoint: op,
+      ordAddress: conn.ordAddress,
+    }))
+    setOwnedOrdinals(ordinals)
+    setOwnedOutpoints(ownedSet)
 
-    if (relevantOutpoints.length > 0) {
+    // Fetch reward balances for owned collection ordinals
+    if (ownedSet.size > 0) {
       try {
-        const params = new URLSearchParams({ outpoints: relevantOutpoints.join(',') })
+        const params = new URLSearchParams({ outpoints: [...ownedSet].join(',') })
         const res = await fetch(`/api/claim/balance?${params}`)
         if (res.ok) {
           const json = await res.json()
@@ -119,6 +152,49 @@ export function CollectionPageClient({
       } catch {
         // Non-fatal
       }
+    }
+  }
+
+  async function handleClaimSingle(outpoint: string) {
+    if (!connectedWallet || sidebarClaiming) return
+    setSidebarClaiming(true)
+    setSidebarClaimResult(null)
+    try {
+      const chalRes = await fetch('/api/ordinals/challenge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ordAddress: connectedWallet.ordAddress }),
+      })
+      if (!chalRes.ok) {
+        const err = await chalRes.json().catch(() => ({}))
+        setSidebarClaimResult({ ok: false, msg: (err as { error?: string }).error ?? 'Challenge failed' })
+        return
+      }
+      const { nonce } = await chalRes.json() as { nonce: string }
+      const signature = await signMessage(connectedWallet.type, nonce)
+      const claimRes = await fetch('/api/ordinals/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          inscriptionOutpoint: outpoint,
+          ordAddress: connectedWallet.ordAddress,
+          bsvAddress: connectedWallet.bsvAddress,
+          nonce,
+          signature,
+        }),
+      })
+      const claimData = await claimRes.json().catch(() => ({})) as { txid?: string; error?: string }
+      if (!claimRes.ok) {
+        setSidebarClaimResult({ ok: false, msg: claimData.error ?? 'Claim failed' })
+      } else if (claimData.txid) {
+        setSidebarClaimResult({ ok: true, msg: 'BSV sent!', txid: claimData.txid })
+      } else {
+        setSidebarClaimResult({ ok: true, msg: 'MNEE queued' })
+      }
+    } catch (e) {
+      setSidebarClaimResult({ ok: false, msg: e instanceof Error ? e.message : 'Unexpected error' })
+    } finally {
+      setSidebarClaiming(false)
     }
   }
 
@@ -149,7 +225,9 @@ export function CollectionPageClient({
   }
 
   const artworkCount = artworks.length
-  const ordinalCount = artworks.filter((a) => !!a.inscription_outpoint).length
+  const ordinalCount = artworks.filter((a) => !!resolveOutpoint(a)).length
+  // Derived outpoint for the currently selected artwork (null when no inscription)
+  const selectedOutpoint = selectedArtwork ? resolveOutpoint(selectedArtwork) : null
 
   return (
     <>
@@ -193,6 +271,8 @@ export function CollectionPageClient({
             <WalletConnector
               onConnected={handleWalletConnect}
               onDisconnected={handleWalletDisconnect}
+              forceOpen={forceWalletOpen}
+              onForceOpenHandled={() => setForceWalletOpen(false)}
             />
           </div>
 
@@ -293,7 +373,7 @@ export function CollectionPageClient({
                 <Badge className="absolute top-3 left-3 bg-black/60 text-white/60 text-xs font-mono border-0 backdrop-blur-sm">
                   #{String(selectedArtwork.position).padStart(2, '0')}
                 </Badge>
-                {selectedArtwork.inscription_outpoint && (
+                {selectedOutpoint && (
                   <Badge className="absolute top-3 right-3 bg-amber-500/80 text-white text-xs border-0">
                     Ordinal
                   </Badge>
@@ -308,22 +388,19 @@ export function CollectionPageClient({
               )}
 
               {/* Inscription details */}
-              {selectedArtwork.inscription_outpoint && (
+              {selectedOutpoint && (
                 <div className="glass rounded-xl p-4 space-y-2">
                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
                     Inscription
                   </p>
                   <div className="flex items-center gap-2">
                     <code className="text-xs text-white/70 font-mono flex-1 truncate">
-                      {truncateOutpoint(selectedArtwork.inscription_outpoint)}
+                      {truncateOutpoint(selectedOutpoint)}
                     </code>
                     <button
                       type="button"
                       onClick={() =>
-                        copyToClipboard(
-                          selectedArtwork.inscription_outpoint ?? '',
-                          `out-${selectedArtwork.id}`,
-                        )
+                        copyToClipboard(selectedOutpoint, `out-${selectedArtwork.id}`)
                       }
                       className="text-muted-foreground hover:text-white transition-colors flex-shrink-0"
                       aria-label="Copy outpoint"
@@ -335,7 +412,7 @@ export function CollectionPageClient({
                       )}
                     </button>
                     <a
-                      href={`https://ordinals.gorillapool.io/content/${selectedArtwork.inscription_outpoint}`}
+                      href={`https://ordinals.gorillapool.io/content/${selectedOutpoint}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-muted-foreground hover:text-white transition-colors flex-shrink-0"
@@ -347,8 +424,104 @@ export function CollectionPageClient({
                 </div>
               )}
 
+              {/* Ownership + claim section — shown only when minted */}
+              {selectedOutpoint && (
+                connectedWallet ? (
+                  ownedOutpoints.has(selectedOutpoint) ? (
+                    <div className="glass rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-400 flex-shrink-0" />
+                        <span className="text-sm font-medium text-emerald-300">You own this ordinal</span>
+                      </div>
+
+                      {/* Per-piece reward balance */}
+                      {(() => {
+                        const b = balances.find((bal) => bal.outpoint === selectedOutpoint)
+                        const mnee = b?.mnee_claimable ?? 0
+                        const bsv = b?.bsv_claimable ?? 0
+                        const hasClaim = mnee > 0 || bsv > 0
+                        const isManual = connectedWallet.type === 'manual'
+                        return (
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="glass rounded-lg p-2.5 text-center">
+                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">MNEE</p>
+                                <p className="text-base font-bold rainbow-text">{fmt(mnee, 2)}</p>
+                              </div>
+                              <div className="glass rounded-lg p-2.5 text-center">
+                                <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">BSV</p>
+                                <p className="text-base font-bold text-amber-300">{fmt(bsv, 6)}</p>
+                              </div>
+                            </div>
+
+                            {sidebarClaimResult && (
+                              <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${
+                                sidebarClaimResult.ok ? 'bg-emerald-500/10 text-emerald-300' : 'bg-red-500/10 text-red-300'
+                              }`}>
+                                {sidebarClaimResult.ok
+                                  ? <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
+                                  : <XCircle className="h-3.5 w-3.5 flex-shrink-0" />}
+                                <span>
+                                  {sidebarClaimResult.txid
+                                    ? `${sidebarClaimResult.msg} · ${sidebarClaimResult.txid.slice(0, 8)}…`
+                                    : sidebarClaimResult.msg}
+                                </span>
+                              </div>
+                            )}
+
+                            <Button
+                              className="w-full"
+                              variant={hasClaim ? 'default' : 'outline'}
+                              disabled={!hasClaim || sidebarClaiming || isManual}
+                              onClick={() => handleClaimSingle(selectedOutpoint!)}
+                            >
+                              {sidebarClaiming ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                  Claiming…
+                                </>
+                              ) : isManual ? (
+                                'Wallet extension required'
+                              ) : hasClaim ? (
+                                <>
+                                  <Coins className="h-4 w-4 mr-2" />
+                                  {`Claim — ${fmt(mnee, 2)} MNEE + ${fmt(bsv, 6)} BSV`}
+                                </>
+                              ) : (
+                                'Nothing to claim yet'
+                              )}
+                            </Button>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="glass rounded-xl p-3 flex items-center gap-2.5">
+                      <Gem className="h-3.5 w-3.5 text-white/25 flex-shrink-0" />
+                      <p className="text-xs text-muted-foreground">
+                        This ordinal is not in your connected wallet.
+                      </p>
+                    </div>
+                  )
+                ) : (
+                  <div className="glass rounded-xl p-4 space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      Own this ordinal? Connect your BSV wallet to verify ownership and claim rewards.
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="w-full border-white/20 hover:bg-white/5 gap-2"
+                      onClick={() => setForceWalletOpen(true)}
+                    >
+                      <Wallet className="h-4 w-4" />
+                      Connect BSV Wallet
+                    </Button>
+                  </div>
+                )
+              )}
+
               {/* Ordinal section — shown only when NOT yet minted */}
-              {!selectedArtwork.inscription_outpoint && (
+              {!selectedOutpoint && (
                 selectedArtwork.jpeg_storage_path ? (
                   <div className="glass rounded-xl p-4 space-y-3">
                     <div className="flex items-center gap-2">

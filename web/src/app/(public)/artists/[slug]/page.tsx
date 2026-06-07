@@ -58,7 +58,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
   const { data: collections } = artistProfile
     ? await admin
         .from('collections')
-        .select('id, title, slug, artwork(id, title, description, storage_path, thumbnail_url, inscription_txid, status)')
+        .select('id, title, slug, artwork(id, title, description, storage_path, thumbnail_url, inscription_txid, inscription_outpoint, status)')
         .eq('artist_id', artistProfile.id)
         .in('status', ['active', 'pending_review'])
     : { data: [] }
@@ -72,9 +72,11 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
       storage_path: string | null
       thumbnail_url: string | null
       inscription_txid: string | null
+      inscription_outpoint: string | null
       status: string
     }[]).map((a) => ({
       id: a.id,
+      collectionSlug: col.slug as string,
       title: a.title,
       description: a.description ?? '',
       thumbnailUrl: a.thumbnail_url ?? getStorageUrl(a.storage_path),
@@ -82,21 +84,27 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
       priceOrdinalMnee: 0,
       shopifyHandle: a.id,
       inscriptionId: a.inscription_txid ?? undefined,
+      inscriptionOutpoint: a.inscription_outpoint ?? undefined,
       isOrdinal: !!a.inscription_txid,
     }))
   )
 
   const ordinals = artworks
-    .filter((a) => a.isOrdinal && a.inscriptionId)
-    .map((a) => ({
-      id: a.id,
-      title: a.title,
-      thumbnailUrl: a.thumbnailUrl,
-      inscriptionId: a.inscriptionId!,
-      outpoint: `${a.inscriptionId}:0`,
-      rarity: 'common' as const,
-      holderCount: 1,
-    }))
+    .filter((a) => a.isOrdinal)
+    .map((a) => {
+      const outpoint = a.inscriptionOutpoint ?? (a.inscriptionId ? `${a.inscriptionId}_0` : null)
+      return outpoint ? {
+        id: a.id,
+        title: a.title,
+        thumbnailUrl: a.thumbnailUrl,
+        inscriptionId: a.inscriptionId!,
+        outpoint,
+        collectionUrl: `/c/${slug}/${a.collectionSlug}`,
+        rarity: 'common' as const,
+        holderCount: 1,
+      } : null
+    })
+    .filter((o): o is NonNullable<typeof o> => o !== null)
 
   const socialLinks = (profile.social_links as Record<string, string> | null) ?? {}
 
@@ -195,6 +203,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
         <ArtistPageClient
           artworks={artworks}
           ordinals={ordinals}
+          artistSlug={slug}
         />
       </div>
     </div>

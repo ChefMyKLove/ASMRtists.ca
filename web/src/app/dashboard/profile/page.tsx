@@ -35,7 +35,13 @@ export default async function ProfilePage() {
 
   const artistProfile = artistRes.data ?? null
   const wallet = walletRes.data ?? null
-  const userRoles = rolesRes.data ?? []
+  const rawRoles = rolesRes.data ?? []
+  // If the user has an artist profile, ensure the artist role badge shows
+  // even if the user_roles row hasn't been inserted yet.
+  const userRoles =
+    artistProfile && !rawRoles.some((r) => r.role === 'artist')
+      ? [...rawRoles, { role: 'artist', status: 'active' }]
+      : rawRoles
 
   const socialLinks = (profile.social_links as Record<string, string> | null) ?? {}
 

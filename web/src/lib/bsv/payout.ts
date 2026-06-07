@@ -15,6 +15,7 @@ import {
   P2PKH,
   PrivateKey,
   Transaction,
+  isBroadcastResponse,
 } from '@bsv/sdk'
 
 const WOC_BASE = 'https://api.whatsonchain.com/v1/bsv/main'
@@ -72,12 +73,7 @@ export async function sendBsvFromTreasury(toAddress: string, satoshis: number): 
     new ARC('https://arc.taal.com', process.env.TAAL_API_KEY ?? 'mainnet')
   )
 
-  const txid =
-    typeof result === 'string' && result.length === 64 ? result
-    : typeof result?.txid === 'string' ? result.txid
-    : typeof result?.id   === 'string' ? result.id
-    : typeof result?.data?.txid === 'string' ? result.data.txid
-    : null
+  const txid = isBroadcastResponse(result) ? result.txid : (result.txid ?? null)
 
   if (!txid) throw new Error(`Broadcast returned no valid txid. Raw: ${JSON.stringify(result)}`)
   return txid

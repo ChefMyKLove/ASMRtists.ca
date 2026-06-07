@@ -90,17 +90,21 @@ export async function verifyChallenge(
 
 /**
  * Verify that ordAddress currently holds the given inscription outpoint.
- * Uses GorillaPool's public API.
  *
- * outpoint: "txid_0" format
+ * Uses the 1sat.app TXO endpoint — the authoritative source for 1Sat ordinals.
+ * outpoint must be in "txid_vout" (underscore) format.
+ *
+ * NOTE: ordAddress is the ORDINALS address (m/44'/236'/1'/0/0), NOT the payment address.
  */
 export async function verifyOwnership(outpoint: string, ordAddress: string): Promise<boolean> {
   try {
-    const url = `https://ordinals.gorillapool.io/api/inscriptions/${outpoint}`
+    const url = `https://api.1sat.app/1sat/txo/${outpoint}`
     const res = await fetch(url, { next: { revalidate: 0 } })
     if (!res.ok) return false
     const data = await res.json()
-    const owner: string = data?.owner ?? data?.address ?? ''
+    // 1sat.app returns the current lock/owner address
+    const owner: string =
+      data?.owner ?? data?.address ?? data?.lock?.address ?? data?.data?.lock?.address ?? ''
     return owner.toLowerCase() === ordAddress.toLowerCase()
   } catch {
     return false
@@ -115,17 +119,22 @@ export async function verifyOwnership(outpoint: string, ordAddress: string): Pro
  */
 async function verifySig(address: string, message: string, signature: string): Promise<boolean> {
   try {
-    // Dynamic import so this module is safe to import in edge/server contexts
-    // where the native crypto might not have all BSV primitives loaded yet.
-    const { BSM, PublicKey, Signature } = await import('@bsv/sdk')
-    const msgHash = BSM.magicHash(message)
-    const sig = Signature.fromCompact(Buffer.from(signature, 'base64'))
-    const recovered = sig.RecoverPublicKey(0, msgHash)
-    const recoveredAddress = recovered.toAddress().toString()
-    return recoveredAddress === address
+    const { BSM, BigNumber, Signature } = await import('@bsv/sdk')
+    const msgBytes = Array.from(Buffer.from(message))
+    const msgHash = BSM.magicHash(msgBytes)
+    const hashBN = BigNumber.fromHex(Buffer.from(msgHash).toString('hex'))
+    const sig = Signature.fromCompact(signature, 'base64')
+    for (const i of [0, 1]) {
+      try {
+        const recovered = sig.RecoverPublicKey(i, hashBN)
+        if (recovered.toAddress().toString() === address) return true
+      } catch {
+        // try next recovery index
+      }
+    }
+    return false
   } catch {
-    // BSV sig verification failed — fall through; GorillaPool ownership is the
-    // primary guard in the claim route.
+    // BSV sig verification failed — GorillaPool ownership is the primary guard.
     return false
   }
 }

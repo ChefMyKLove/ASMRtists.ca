@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchProductPrices } from '@/lib/shopify'
 import { CollectionPageClient } from './collection-page-client'
 import type { CollectionArtist, CollectionData } from '@/components/collection/types'
@@ -10,23 +11,23 @@ interface CollectionPageProps {
 }
 
 // ── Two-step artist lookup ──────────────────────────────────────────────────
-// The spec queries artist_profiles by username, but username lives on profiles
-// (artist_profiles has user_id → profiles.id).  We do two queries to produce
-// the same artist shape with the correct data.
+// Uses admin client to bypass RLS — public collection pages must be readable
+// by unauthenticated visitors.
 
 async function lookupArtist(
-  supabase: Awaited<ReturnType<typeof createClient>>,
   username: string,
 ): Promise<CollectionArtist | null> {
-  const { data: profile } = await supabase
+  const admin = createAdminClient()
+
+  const { data: profile } = await admin
     .from('profiles')
     .select('id, username, display_name, avatar_url')
-    .eq('username', username)
+    .ilike('username', username)
     .single()
 
   if (!profile) return null
 
-  const { data: ap } = await supabase
+  const { data: ap } = await admin
     .from('artist_profiles')
     .select('id, bio, avatar_url, user_id, stage_name')
     .eq('user_id', profile.id)
@@ -48,12 +49,12 @@ async function lookupArtist(
 
 export async function generateMetadata({ params }: CollectionPageProps): Promise<Metadata> {
   const { username, collection: slug } = await params
-  const supabase = await createClient()
+  const admin = createAdminClient()
 
-  const artist = await lookupArtist(supabase, username)
+  const artist = await lookupArtist(username)
   if (!artist) return { title: 'Collection — ASMRtists.ca' }
 
-  const { data: col } = await supabase
+  const { data: col } = await admin
     .from('collections')
     .select('title, description')
     .eq('artist_id', artist.id)
@@ -79,14 +80,14 @@ export async function generateMetadata({ params }: CollectionPageProps): Promise
 
 export default async function CollectionPage({ params }: CollectionPageProps) {
   const { username, collection: slug } = await params
-  const supabase = await createClient()
+  const admin = createAdminClient()
 
-  // Step 1 — resolve artist (two sub-queries: profile by username, then artist_profiles)
-  const artist = await lookupArtist(supabase, username)
+  // Step 1 — resolve artist (admin client bypasses RLS for public visibility)
+  const artist = await lookupArtist(username)
   if (!artist) notFound()
 
   // Step 2 — collection by (artist_id, slug), with artwork + print_products nested
-  const { data: col } = await supabase
+  const { data: col } = await admin
     .from('collections')
     .select(`
       id, slug, title, description, cover_image_url, status,
@@ -103,6 +104,7 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
 
   if (!col) notFound()
 
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const isOwningArtist = user?.id === artist.user_id
 

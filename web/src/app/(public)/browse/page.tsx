@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { BrowseClient } from './browse-client'
 
 export const metadata: Metadata = {
@@ -6,90 +7,50 @@ export const metadata: Metadata = {
   description: 'Discover independent artists and their original work. Filter by curator, collection, prints, and ordinals.',
 }
 
-// TODO: Replace with supabase.from('artist_profiles').select('*, artworks(*), collections(*)')
-//       .eq('is_active', true).order('is_featured', { ascending: false })
-const placeholderArtists = [
-  {
-    slug: 'aurora-vex',
-    displayName: 'Aurora Vex',
-    bio: 'Digital surrealist exploring the boundaries between sound and colour.',
-    artworkCount: 12,
-    isFeatured: true,
-    hasPrints: true,
-    hasOrdinals: true,
-    collectionName: 'Chromatic Drift',
-    curatorName: 'Neon Curators',
-    bannerUrl: 'https://images.unsplash.com/photo-1604871000636-074fa5117945?w=600&q=80',
-    avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&q=80',
-  },
-  {
-    slug: 'neon-moth',
-    displayName: 'Neon Moth',
-    bio: 'Generative art grounded in BSV blockchain inscription.',
-    artworkCount: 8,
-    isFeatured: false,
-    hasPrints: false,
-    hasOrdinals: true,
-    collectionName: 'Signal Series',
-    curatorName: 'Block Gallery',
-    bannerUrl: 'https://images.unsplash.com/photo-1518640467707-6811f4a6ab73?w=600&q=80',
-    avatarUrl: 'https://images.unsplash.com/photo-1552374196-c4e7ffc6e126?w=200&q=80',
-  },
-  {
-    slug: 'lunar-press',
-    displayName: 'Lunar Press',
-    bio: 'Fine art prints with a pastel, dreamlike quality.',
-    artworkCount: 24,
-    isFeatured: false,
-    hasPrints: true,
-    hasOrdinals: false,
-    collectionName: 'Dreamscapes',
-    curatorName: 'Pastel Collective',
-    bannerUrl: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=600&q=80',
-    avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&q=80',
-  },
-  {
-    slug: 'verdant-echo',
-    displayName: 'Verdant Echo',
-    bio: 'Nature-inspired digital paintings that blur the line between photography and illustration.',
-    artworkCount: 17,
-    isFeatured: false,
-    hasPrints: true,
-    hasOrdinals: true,
-    collectionName: 'Forest Frequencies',
-    curatorName: 'Neon Curators',
-    bannerUrl: 'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=600&q=80',
-    avatarUrl: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=200&q=80',
-  },
-  {
-    slug: 'prism-flux',
-    displayName: 'Prism Flux',
-    bio: 'Kaleidoscopic abstract works exploring light diffraction and colour theory.',
-    artworkCount: 6,
-    isFeatured: false,
-    hasPrints: true,
-    hasOrdinals: false,
-    collectionName: 'Refraction Studies',
-    curatorName: 'Block Gallery',
-    bannerUrl: 'https://images.unsplash.com/photo-1581044777550-4cfa60707c03?w=600&q=80',
-    avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&q=80',
-  },
-  {
-    slug: 'deep-violet',
-    displayName: 'Deep Violet',
-    bio: 'Dark ambient aesthetics translated into richly textured digital compositions.',
-    artworkCount: 31,
-    isFeatured: false,
-    hasPrints: false,
-    hasOrdinals: true,
-    collectionName: 'Void Studies',
-    curatorName: 'Pastel Collective',
-    bannerUrl: 'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=600&q=80',
-    avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=200&q=80',
-  },
-]
+export default async function BrowsePage() {
+  const admin = createAdminClient()
 
-export default function BrowsePage() {
+  // Fetch active artist profiles
+  const { data: artistProfiles } = await admin
+    .from('artist_profiles')
+    .select('id, user_id, stage_name, bio, avatar_url, banner_url, piece_count')
+    .eq('status', 'active')
+    .order('piece_count', { ascending: false })
+    .limit(48)
+
+  const profiles = artistProfiles ?? []
+  const userIds = profiles.map((a) => a.user_id)
+  const artistIds = profiles.map((a) => a.id)
+
+  // Fetch usernames and ordinals flags in parallel
+  const [profilesRes, artworksRes] = await Promise.all([
+    userIds.length > 0
+      ? admin.from('profiles').select('id, username').in('id', userIds)
+      : Promise.resolve({ data: [] }),
+    artistIds.length > 0
+      ? admin.from('artwork').select('artist_id, inscription_outpoint').in('artist_id', artistIds)
+      : Promise.resolve({ data: [] }),
+  ])
+
+  const usernameMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p.username as string]))
+
+  const ordinalsSet = new Set<string>()
+  for (const aw of artworksRes.data ?? []) {
+    if (aw.inscription_outpoint) ordinalsSet.add(aw.artist_id as string)
+  }
+
+  const artists = profiles.map((ap) => ({
+    slug: usernameMap.get(ap.user_id) ?? ap.user_id,
+    displayName: (ap.stage_name as string | null) ?? 'Unknown Artist',
+    bio: ap.bio as string | null,
+    artworkCount: (ap.piece_count as number) ?? 0,
+    isFeatured: ((ap.piece_count as number) ?? 0) >= 3,
+    hasOrdinals: ordinalsSet.has(ap.id as string),
+    hasPrints: false,
+    bannerUrl: ap.banner_url as string | null,
+    avatarUrl: ap.avatar_url as string | null,
+  }))
+
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
       <div className="mb-8">
@@ -98,9 +59,7 @@ export default function BrowsePage() {
           Discover independent artists and their original work.
         </p>
       </div>
-
-      {/* Client component handles search + filter interactivity */}
-      <BrowseClient artists={placeholderArtists} />
+      <BrowseClient artists={artists} />
     </div>
   )
 }
