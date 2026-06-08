@@ -1,6 +1,6 @@
 # ASMRtists — Artist Portfolio & Print Commerce Platform
 
-> **Art Splash Marketing Roster** — a full-stack platform connecting visual artists, print buyers, and collectors through portfolio management, automated print-on-demand fulfillment, and optional BSV blockchain provenance.
+> **Art Splash Marketing Roster** — a platform for visual artists, print buyers, and the collectors who have a stake in both.
 
 **Live platform:** https://ASMRtists.ca  
 **Commerce storefront:** https://ASMRprints.com  
@@ -10,29 +10,11 @@
 
 ## Project Overview
 
-ASMRtists is a multi-portal web application built as a capstone project for the Circuit Stream / UBC Continuing Education Full-Stack Software Development program. It solves a real fragmentation problem for independent visual artists: portfolio, fulfillment, and collector engagement typically live on separate platforms with no connection between them.
+Artists upload a collection of images. ASMRtists publishes them to a print-on-demand storefront and mints a BSV 1Sat Ordinal for each artwork simultaneously — one token per piece.
 
-The platform unifies these into three portals:
+Anyone can buy a print. No wallet required, no crypto knowledge needed. But if you hold the ordinal for a piece, you earn a share of every print that sells from it. Rewards accumulate as long as you hold. You can claim them, let them grow, or sell the ordinal on the secondary market. The more an artist's work sells, the more interesting it is to hold their tokens — which gives holders a real reason to promote the artists they believe in.
 
-- **Artist Portal** — onboarding, portfolio management, collection upload, Printify and Shopify sync
-- **Collector/Curator Portal** — artwork discovery, gamified leaderboard, referral system, wallet-based login
-- **Gallery / Marketplace** — public-facing storefront with featured artists, ranked collectors, and purchase triggers
-
-An optional blockchain layer mints BSV 1Sat Ordinals per artwork. Ordinal holders receive a perpetual revenue share on every print sold from that artwork — a verifiable, on-chain stake that never expires.
-
----
-
-## Features
-
-- Artist registration, profile management, and collection upload (up to 64 JPEGs per collection)
-- Automated product creation via Printify API (canvas print, art print, photo print per artwork)
-- Shopify storefront sync with tag-based per-artist collections
-- Public collection pages at `/c/[username]/[collection]`
-- BSV 1Sat Ordinal minting with TAAL ARC broadcast and WhatsOnChain UTXO resolution
-- Wallet authentication for collector interactions (Yours Wallet, HandCash, RelayX)
-- Gamified collector leaderboard and referral tracking
-- Revenue split automation via MNEE stablecoin: Artist 70% / Ordinal holders 15% / Curators 10% / Platform 5%
-- Live proof-of-concept: Ordinal Rainbows Vol. 1 (63 ordinals, 13 wallets)
+Three user types, three portals: artists who publish, collectors who buy prints or hold tokens, and curators who organize work into themed collections and vet incoming submissions before they go live.
 
 ---
 
@@ -44,6 +26,30 @@ ASMRtists.ca/
 ├── shop/       # Cloudflare Worker — Shopify storefront proxy (ASMRprints.com)
 └── scripts/    # Python utilities — Printify pipeline, ordinal prep, Shopify sync
 ```
+
+---
+
+## Features
+
+**Live / In Active Development**
+- Artist registration, profile management, and collection upload (up to 64 JPEGs per collection)
+- Simultaneous publish to Shopify storefront and BSV ordinals minting on collection submission
+- Proprietary in-house ordinal minting pipeline (fully built, in active testing)
+- Automated Printify fulfillment — canvas print, art print, photo print per artwork
+- Shopify storefront sync with tag-based per-artist collections
+- Public collection pages at `/c/[username]/[collection]`
+- BSV wallet authentication — Yours Wallet extension or new wallet generation on signup
+- Revenue split automation via MNEE stablecoin on net revenue after production costs: Artist 70% / Ordinal holders 15% / Curators 10% / Platform 5%
+- Curator content vetting council (founder-selected at launch)
+- Ordinal Rainbows Vol. 1 — pre-platform proof of concept validating the core model: art on-chain, prints on demand
+
+**Roadmap**
+- Collector and artist leaderboards
+- Referral system and social layer
+- Discord community gating bot
+- Artist opt-in licensing for recursive ordinal use in external projects (generates additional BSV21 token rewards for holders)
+- Curator governance via BSV21 token (council elections, feature voting)
+- Per-artist branded storefronts via Shopify Collaborator access
 
 ---
 
@@ -99,19 +105,24 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Artist Flow
 1. Register at `/register` and complete your artist profile
 2. Upload a collection of JPEGs (max 64) via the Artist Portal
-3. Products are automatically created in Printify and synced to the Shopify storefront
-4. Optionally mint BSV 1Sat Ordinals for each artwork to enable collector revenue sharing
+3. Platform automatically publishes to Shopify storefront and mints BSV ordinals — one per artwork
+4. Collectors can mint available ordinals; print sales generate rewards for holders
 
 ### Collector Flow
 1. Browse the gallery at the platform homepage
-2. Connect a BSV wallet to participate in the collector portal
-3. Mint or acquire ordinals to earn a perpetual share of print revenue
-4. Track your rank on the collector leaderboard
+2. Buy prints directly — no wallet required
+3. Or: connect via Yours Wallet (or generate a new BSV wallet on signup) to mint and hold ordinals
+4. Accumulate rewards as the artist's prints sell; hold, sell, or use ordinals in external projects
+
+### Curator Flow
+1. Sign up and choose a tier (free / pro / enterprise)
+2. Build themed portals across multiple artists' collections
+3. Participate in the content vetting council to review and approve incoming artist submissions
 
 ### Print Buyer Flow
 1. Visit [ASMRprints.com](https://ASMRprints.com)
 2. Browse by artist or collection
-3. Purchase prints — fulfilled automatically via Printify
+3. Purchase — fulfilled automatically via Printify
 
 ---
 
@@ -122,10 +133,11 @@ Open [http://localhost:3000](http://localhost:3000).
 | Frontend | Next.js 16 (App Router), TypeScript, React, Tailwind CSS, shadcn/ui |
 | Backend / API | Next.js API routes, Node.js |
 | Database | Supabase (PostgreSQL), Row Level Security |
-| Authentication | Supabase Auth + BSV wallet login |
+| Authentication | Supabase Auth + BSV wallet login (Yours Wallet / generated wallet) |
 | Fulfillment | Printify API |
 | Storefront | Shopify API |
 | Blockchain | BSV 1Sat Ordinals, `@bsv/sdk`, TAAL ARC, WhatsOnChain |
+| Minting | Proprietary in-house minting pipeline |
 | Payouts | MNEE stablecoin |
 | Scripting | Python (Printify pipeline, ordinal prep, Shopify sync) |
 | Hosting | Vercel (CI/CD), Supabase Pro |
@@ -135,14 +147,14 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Future Improvements
 
-- Proprietary in-house ordinal minting platform (currently using Zoide NFT for launch)
-- Artist portal frontend (admin dashboard for collection and payout management)
+- Collector and artist leaderboards with gamification layer
+- Referral system and social features on artist portfolio pages
 - Discord community gating bot (partially built; Fly.io deployment pending)
-- Card game feature using Ordinal Rainbows Vol. 1 inscriptions as card art
+- Artist opt-in licensing agreement for recursive ordinal use in external projects
+- BSV21 governance token for curator council elections and platform feature voting
 - Per-artist branded storefronts via Shopify Collaborator access
-- Unit and integration test suite expansion
-- Self-hosted infrastructure migration (Supabase + Next.js) as a cost lever post-launch
-- Mobile-responsive collector portal optimization
+- Self-hosted infrastructure migration as a cost lever post-scale
+- Mobile optimization across all portals
 
 ---
 

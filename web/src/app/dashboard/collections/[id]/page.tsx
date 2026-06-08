@@ -1,5 +1,6 @@
 import { Metadata } from 'next'
 import { notFound } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -165,6 +166,7 @@ export default async function CollectionDetailPage({ params }: PageProps) {
               'use server'
               const desc = (formData.get('description') as string | null)?.trim() || null
               await updateCollectionDescriptionAction(id, desc)
+              revalidatePath(`/dashboard/collections/${id}`)
             }}
             className="flex flex-col gap-1.5 max-w-prose"
           >
