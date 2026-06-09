@@ -81,7 +81,7 @@ export async function insertArtworkAction(
       title,
       position,
       storage_path: storagePath,
-      status: 'uploaded',
+      status: 'pending_review',
       width_px: widthPx,
       height_px: heightPx,
     })
@@ -217,6 +217,80 @@ export async function updateCollectionDescriptionAction(
     .update({ description: description || null })
     .eq('id', collectionId)
     .eq('artist_id', ap.id)
+
+  if (error) return { error: error.message }
+  return { error: null }
+}
+
+export async function approveArtworkAction(
+  artworkId: string,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient()
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return { error: 'Not authenticated' }
+
+  const admin = createAdminClient()
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('active_role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || (profile.active_role !== 'curator' && profile.active_role !== 'admin')) {
+    return { error: 'Not authorized' }
+  }
+
+  const { error } = await admin
+    .from('artwork')
+    .update({ status: 'uploaded' })
+    .eq('id', artworkId)
+    .eq('status', 'pending_review')
+
+  if (error) return { error: error.message }
+
+  // Fire pipeline trigger (best effort — artwork is approved regardless)
+  try {
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+    await fetch(`${baseUrl}/api/pipeline/trigger`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-pipeline-secret': process.env.PIPELINE_WEBHOOK_SECRET ?? '',
+      },
+      body: JSON.stringify({ artworkId }),
+    })
+  } catch {
+    // Non-fatal — pipeline will pick it up on its next scheduled run
+  }
+
+  return { error: null }
+}
+
+export async function rejectArtworkAction(
+  artworkId: string,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient()
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return { error: 'Not authenticated' }
+
+  const admin = createAdminClient()
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('active_role')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile || (profile.active_role !== 'curator' && profile.active_role !== 'admin')) {
+    return { error: 'Not authorized' }
+  }
+
+  const { error } = await admin
+    .from('artwork')
+    .update({ status: 'rejected' })
+    .eq('id', artworkId)
+    .eq('status', 'pending_review')
 
   if (error) return { error: error.message }
   return { error: null }

@@ -1,26 +1,73 @@
-import { Metadata } from 'next'
+import type { Metadata } from 'next'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { CurateClient } from './curate-client'
 
-export const metadata: Metadata = { title: 'Curate — Dashboard' }
+export const metadata: Metadata = { title: 'Review Queue — Dashboard' }
 
-export default function CuratePage() {
+function buildStorageUrl(path: string | null): string {
+  if (!path) return ''
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!base) return ''
+  return `${base}/storage/v1/object/public/artwork-originals/${path}`
+}
+
+export default async function CuratePage() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
+
+  const admin = createAdminClient()
+
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('active_role')
+    .eq('id', user.id)
+    .single()
+
+  if (profile?.active_role !== 'curator' && profile?.active_role !== 'admin') {
+    redirect('/dashboard')
+  }
+
+  const { data: pendingArtwork } = await admin
+    .from('artwork')
+    .select('id, title, storage_path, thumbnail_url, created_at, artist_id')
+    .eq('status', 'pending_review')
+    .order('created_at', { ascending: true })
+
+  const artistIds = [...new Set((pendingArtwork ?? []).map((a) => a.artist_id).filter(Boolean))]
+
+  const { data: artistProfiles } = artistIds.length > 0
+    ? await admin
+        .from('artist_profiles')
+        .select('id, stage_name')
+        .in('id', artistIds)
+    : { data: [] }
+
+  const artistMap: Record<string, string> = Object.fromEntries(
+    (artistProfiles ?? []).map((ap) => [ap.id, ap.stage_name ?? 'Unknown Artist'])
+  )
+
+  const items = (pendingArtwork ?? []).map((a) => ({
+    id: a.id as string,
+    title: a.title as string,
+    thumbnailUrl: (a.thumbnail_url as string | null) ?? buildStorageUrl(a.storage_path as string | null),
+    artistName: artistMap[a.artist_id as string] ?? 'Unknown Artist',
+    createdAt: a.created_at as string,
+  }))
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Curate</h1>
+        <h1 className="text-2xl font-bold">Review Queue</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Champion artists and earn a 10% revenue share on their sales.
+          {items.length === 0
+            ? 'No artwork pending review.'
+            : `${items.length} submission${items.length === 1 ? '' : 's'} awaiting approval`}
         </p>
       </div>
-
-      <div className="glass rounded-xl p-8 text-center space-y-3">
-        <p className="text-muted-foreground text-sm">
-          Curator features are coming soon.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          You&apos;ll be able to link artists to your curator profile and receive automatic MNEE
-          distributions when their work sells.
-        </p>
-      </div>
+      <CurateClient items={items} />
     </div>
   )
 }

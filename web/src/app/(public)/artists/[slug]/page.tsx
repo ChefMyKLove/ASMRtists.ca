@@ -75,7 +75,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
       inscription_outpoint: string | null
       status: string
       print_products: { shopify_product_handle: string | null }[] | null
-    }[]).map((a) => ({
+    }[]).filter((a) => a.status !== 'pending_review' && a.status !== 'rejected').map((a) => ({
       id: a.id,
       collectionSlug: col.slug as string,
       title: a.title,
