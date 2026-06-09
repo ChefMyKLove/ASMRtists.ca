@@ -24,7 +24,7 @@ const artistSteps = [
   {
     step: '03',
     title: 'Get paid automatically',
-    body: 'Every print sale triggers an automatic fiat payout via Stripe Connect. Ordinal sales deliver MNEE directly to your BSV wallet.',
+    body: 'Every print sale triggers an automatic fiat payout via Stripe Connect. Ordinal sales are settled in BSV, paid directly to your wallet. When your prints keep selling, ordinal holders earn MNEE — keeping demand alive.',
   },
 ]
 
@@ -158,24 +158,29 @@ export default function AboutPage() {
           <div className="glass rounded-2xl p-6 space-y-4">
             <div className="flex items-center gap-3">
               <span className="text-2xl text-[#c4b0ff]">◎</span>
-              <h3 className="font-semibold">Print sales → Fiat to artists</h3>
+              <h3 className="font-semibold">Print sales → Fiat to artists, MNEE to holders</h3>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              When a collector orders a print, ASMRprints.com fulfills the order. A portion of
-              each sale is automatically routed to the artist&rsquo;s Stripe Connect account in CAD or USD.
-              No Bitcoin wallet needed by the collector.
+              When a collector orders a print, ASMRprints.com fulfills the order. The artist&rsquo;s
+              cut is routed to their Stripe Connect account in CAD or USD. Ordinal holders of that
+              piece automatically earn MNEE (a USD-pegged stablecoin on BSV) — redeemable any time
+              or left attached to the ordinal to grow its resale value.
             </p>
-            <div className="flex gap-6 pt-1">
+            <div className="flex gap-6 pt-1 flex-wrap">
               <div>
                 <p className="text-lg font-semibold text-[#c4b0ff]">70%</p>
                 <p className="text-xs text-muted-foreground">to Artist</p>
               </div>
               <div>
-                <p className="text-lg font-semibold text-white/60">15%</p>
-                <p className="text-xs text-muted-foreground">to Curator</p>
+                <p className="text-lg font-semibold text-[#ffb3d1]">15%</p>
+                <p className="text-xs text-muted-foreground">to Holders</p>
               </div>
               <div>
-                <p className="text-lg font-semibold text-white/30">15%</p>
+                <p className="text-lg font-semibold text-white/60">10%</p>
+                <p className="text-xs text-muted-foreground">to Curators</p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold text-white/30">5%</p>
                 <p className="text-xs text-muted-foreground">Platform fee</p>
               </div>
             </div>
@@ -184,21 +189,22 @@ export default function AboutPage() {
           <div className="glass rounded-2xl p-6 space-y-4">
             <div className="flex items-center gap-3">
               <span className="text-2xl text-[#ffb3d1]">◆</span>
-              <h3 className="font-semibold">Ordinal sales → MNEE rewards</h3>
+              <h3 className="font-semibold">Ordinal sales → Paid in BSV</h3>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              When an ordinal is purchased, MNEE (a USD-pegged BSV stablecoin) is sent directly
-              to the artist&rsquo;s BSV wallet on-chain. The inscription is transferred atomically —
-              payment and delivery happen in the same transaction.
+              Ordinals are priced and sold in BSV. When a collector mints one, BSV is split
+              instantly on-chain — the artist receives their share directly to their BSV wallet.
+              The inscription transfers atomically: payment and delivery in the same transaction.
+              There are no prior holders at mint time, so their share goes to curators instead.
             </p>
-            <div className="flex gap-6 pt-1">
+            <div className="flex gap-6 pt-1 flex-wrap">
               <div>
-                <p className="text-lg font-semibold text-[#c4b0ff]">80%</p>
+                <p className="text-lg font-semibold text-[#c4b0ff]">70%</p>
                 <p className="text-xs text-muted-foreground">to Artist</p>
               </div>
               <div>
-                <p className="text-lg font-semibold text-white/60">10%</p>
-                <p className="text-xs text-muted-foreground">to Curator</p>
+                <p className="text-lg font-semibold text-white/60">20%</p>
+                <p className="text-xs text-muted-foreground">to Curators</p>
               </div>
               <div>
                 <p className="text-lg font-semibold text-white/30">10%</p>
