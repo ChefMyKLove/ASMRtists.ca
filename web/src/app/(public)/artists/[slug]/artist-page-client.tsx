@@ -29,7 +29,7 @@ interface Artwork {
   thumbnailUrl: string
   pricePrintCad: number
   priceOrdinalMnee: number
-  shopifyHandle: string
+  shopifyHandle: string | null
   inscriptionId?: string
   inscriptionOutpoint?: string
   isOrdinal: boolean
@@ -156,8 +156,8 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
   }))
 
   function openPrintModal(artwork: Artwork) {
-    const url = `https://asmrprints.com/product/${artwork.shopifyHandle}?embed=1`
-    setShopUrl(url)
+    if (!artwork.shopifyHandle) return
+    setShopUrl(`https://asmrprints.com/product/${artwork.shopifyHandle}?embed=1`)
     setShopTitle(`${artwork.title} — Print`)
     setShopModalOpen(true)
   }
@@ -485,7 +485,8 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
                   </p>
                   <Button
                     onClick={() => openPrintModal(selectedArtwork)}
-                    className="w-full bg-white text-black hover:bg-white/90"
+                    disabled={!selectedArtwork.shopifyHandle}
+                    className="w-full bg-white text-black hover:bg-white/90 disabled:opacity-50"
                   >
                     <Printer className="h-4 w-4 mr-2" />
                     Buy Print
