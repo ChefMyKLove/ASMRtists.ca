@@ -9,8 +9,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-// Opens ASMRprints.com product in an iframe modal
-// URL format: https://asmrprints.com/product/{handle}?embed=1
+// Opens shop product in an iframe modal
+// URL format: https://canvas-cosmic-cart.chefmyklove.workers.dev/product/{handle}?embed=1
 
 interface ShopModalProps {
   shopifyUrl: string

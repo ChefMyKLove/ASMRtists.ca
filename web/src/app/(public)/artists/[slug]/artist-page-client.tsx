@@ -157,7 +157,7 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
 
   function openPrintModal(artwork: Artwork) {
     if (!artwork.shopifyHandle) return
-    setShopUrl(`https://asmrprints.com/product/${artwork.shopifyHandle}?embed=1`)
+    setShopUrl(`https://canvas-cosmic-cart.chefmyklove.workers.dev/product/${artwork.shopifyHandle}?embed=1`)
     setShopTitle(`${artwork.title} — Print`)
     setShopModalOpen(true)
   }

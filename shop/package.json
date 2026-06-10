@@ -13,7 +13,7 @@
     "cf:login": "wrangler login",
     "cf:secret:domain": "wrangler secret put VITE_SHOPIFY_STORE_DOMAIN",
     "cf:secret:token": "wrangler secret put VITE_SHOPIFY_STOREFRONT_TOKEN",
-    "cf:deploy": "wrangler deploy"
+    "cf:deploy": "wrangler deploy --config dist/server/wrangler.json"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",

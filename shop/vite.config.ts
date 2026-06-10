@@ -14,6 +14,8 @@ export default defineConfig(({ command }) => ({
 		// Cloudflare plugin only during builds — Miniflare/workerd has CJS
 		// compatibility issues in dev mode with some TanStack dependencies.
 		// `npm run dev` uses Node's native SSR; `npm run build` targets Workers.
-		...(command === "build" ? [cloudflare()] : []),
+		// viteEnvironment.name must be "ssr" so TanStack Start's manifest plugin
+		// resolves virtual:tanstack-start-client-entry to the real hashed file.
+		...(command === "build" ? [cloudflare({ viteEnvironment: { name: "ssr" } })] : []),
 	],
 }));

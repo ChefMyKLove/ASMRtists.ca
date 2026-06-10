@@ -49,9 +49,9 @@ function getShopUrl(artwork: CollectionArtwork): string {
   const products = artwork.print_products ?? []
   const preferred = products.find((p) => p.product_type === 'canvas') ?? products[0]
   if (preferred?.shopify_product_handle) {
-    return `https://asmrprints.com/product/${preferred.shopify_product_handle}?embed=1`
+    return `https://canvas-cosmic-cart.chefmyklove.workers.dev/product/${preferred.shopify_product_handle}?embed=1`
   }
-  return `https://asmrprints.com/search?q=${encodeURIComponent(artwork.title)}`
+  return `https://canvas-cosmic-cart.chefmyklove.workers.dev/search?q=${encodeURIComponent(artwork.title)}`
 }
 
 function getArtworkPrice(
