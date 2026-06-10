@@ -29,7 +29,7 @@ interface Artwork {
   thumbnailUrl: string
   pricePrintCad: number
   priceOrdinalMnee: number
-  shopifyHandle: string | null
+  printProducts: { handle: string; productType: string }[]
   inscriptionId?: string
   inscriptionOutpoint?: string
   isOrdinal: boolean
@@ -68,6 +68,7 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
   const [shopModalOpen, setShopModalOpen] = useState(false)
   const [shopUrl, setShopUrl] = useState('')
   const [shopTitle, setShopTitle] = useState('')
+  const [shopPrintProducts, setShopPrintProducts] = useState<{ handle: string; productType: string }[]>([])
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const [connectedWallet, setConnectedWallet] = useState<WalletConnection | null>(null)
@@ -156,9 +157,12 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
   }))
 
   function openPrintModal(artwork: Artwork) {
-    if (!artwork.shopifyHandle) return
-    setShopUrl(`https://canvas-cosmic-cart.chefmyklove.workers.dev/product/${artwork.shopifyHandle}?embed=1`)
+    if (!artwork.printProducts.length) return
+    const preferred =
+      artwork.printProducts.find((p) => p.productType === 'canvas') ?? artwork.printProducts[0]
+    setShopUrl(`https://canvas-cosmic-cart.chefmyklove.workers.dev/product/${preferred.handle}?embed=1`)
     setShopTitle(`${artwork.title} — Print`)
+    setShopPrintProducts(artwork.printProducts)
     setShopModalOpen(true)
   }
 
@@ -485,7 +489,7 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
                   </p>
                   <Button
                     onClick={() => openPrintModal(selectedArtwork)}
-                    disabled={!selectedArtwork.shopifyHandle}
+                    disabled={!selectedArtwork.printProducts.length}
                     className="w-full bg-white text-black hover:bg-white/90 disabled:opacity-50"
                   >
                     <Printer className="h-4 w-4 mr-2" />
@@ -540,6 +544,10 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
         title={shopTitle}
         isOpen={shopModalOpen}
         onClose={() => setShopModalOpen(false)}
+        printProducts={shopPrintProducts}
+        onProductChange={(handle) =>
+          setShopUrl(`https://canvas-cosmic-cart.chefmyklove.workers.dev/product/${handle}?embed=1`)
+        }
       />
     </>
   )

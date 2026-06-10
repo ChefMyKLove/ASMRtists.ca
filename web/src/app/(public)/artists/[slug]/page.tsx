@@ -58,7 +58,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
   const { data: collections } = artistProfile
     ? await admin
         .from('collections')
-        .select('id, title, slug, artwork(id, title, description, storage_path, thumbnail_url, inscription_txid, inscription_outpoint, status, print_products(shopify_product_handle))')
+        .select('id, title, slug, artwork(id, title, description, storage_path, thumbnail_url, inscription_txid, inscription_outpoint, status, print_products(shopify_product_handle, product_type))')
         .eq('artist_id', artistProfile.id)
         .in('status', ['active', 'pending_review'])
     : { data: [] }
@@ -74,7 +74,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
       inscription_txid: string | null
       inscription_outpoint: string | null
       status: string
-      print_products: { shopify_product_handle: string | null }[] | null
+      print_products: { shopify_product_handle: string | null; product_type: string | null }[] | null
     }[]).filter((a) => a.status !== 'pending_review' && a.status !== 'rejected').map((a) => ({
       id: a.id,
       collectionSlug: col.slug as string,
@@ -83,7 +83,9 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
       thumbnailUrl: a.thumbnail_url ?? getStorageUrl(a.storage_path),
       pricePrintCad: 0,
       priceOrdinalMnee: 0,
-      shopifyHandle: (a.print_products ?? []).find((p) => p.shopify_product_handle)?.shopify_product_handle ?? null,
+      printProducts: (a.print_products ?? [])
+        .filter((p) => p.shopify_product_handle)
+        .map((p) => ({ handle: p.shopify_product_handle!, productType: p.product_type ?? 'print' })),
       inscriptionId: a.inscription_txid ?? undefined,
       inscriptionOutpoint: a.inscription_outpoint ?? undefined,
       isOrdinal: !!a.inscription_txid,
