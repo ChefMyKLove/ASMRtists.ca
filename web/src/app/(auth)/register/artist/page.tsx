@@ -5,16 +5,18 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Eye, EyeOff, Upload, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, Upload, AlertTriangle, Wallet } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { MultiStepForm } from '@/components/auth/multi-step-form'
+import { WalletConnector } from '@/components/wallet/wallet-connector'
 import { createClient } from '@/lib/supabase/client'
 import { createArtistProfile, saveWalletAddress } from '@/app/actions/register'
 import { generateWallet } from '@/lib/bsv/wallet'
 import type { WalletResult } from '@/lib/bsv/wallet'
+import type { WalletConnection } from '@/lib/wallet/connectors'
 
 const accountSchema = z
   .object({
@@ -48,6 +50,8 @@ export default function RegisterArtistPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [registeredUserId, setRegisteredUserId] = useState<string | null>(null)
+  const [walletMode, setWalletMode] = useState<'choose' | 'existing' | 'generate'>('choose')
+  const [existingWallet, setExistingWallet] = useState<WalletConnection | null>(null)
   const [wallet, setWallet] = useState<WalletResult | null>(null)
   const [seedVisible, setSeedVisible] = useState(false)
   const [seedConfirmed, setSeedConfirmed] = useState(false)
@@ -138,12 +142,29 @@ export default function RegisterArtistPage() {
     setSeedConfirmed(false)
   }
 
+  async function handleSaveExistingWallet() {
+    if (!existingWallet || !registeredUserId) return
+    setSavingWallet(true)
+    setServerError(null)
+    const { error } = await saveWalletAddress(
+      registeredUserId,
+      existingWallet.bsvAddress,
+      existingWallet.ordAddress,
+      true,
+    )
+    if (error) {
+      setServerError('Could not save wallet address. Please try again.')
+    } else {
+      setStep(4)
+    }
+    setSavingWallet(false)
+  }
+
   async function handleSaveWallet() {
     if (!wallet || !seedConfirmed || !registeredUserId) return
     setSavingWallet(true)
     setServerError(null)
-
-    const { error } = await saveWalletAddress(registeredUserId, wallet.address)
+    const { error } = await saveWalletAddress(registeredUserId, wallet.address, wallet.ordAddress)
     if (error) {
       setServerError('Could not save wallet address. Please try again.')
     } else {
@@ -373,100 +394,152 @@ export default function RegisterArtistPage() {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Your earnings and ordinal royalties are paid directly to your BSV address.
-                  Generate your wallet below — <strong className="text-white">we will never see
-                  your seed phrase or private key</strong>, and if you lose them, no one can
-                  recover your funds.
+                  Use your existing wallet or generate a new one.
                 </p>
               </div>
 
-              {!wallet ? (
-                <Button onClick={handleGenerateWallet} className="w-full">
-                  Generate my BSV wallet
-                </Button>
-              ) : (
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Your 12-word seed phrase
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setSeedVisible((v) => !v)}
-                        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors"
-                      >
-                        {seedVisible ? (
-                          <>
-                            <EyeOff className="h-3.5 w-3.5" /> Hide
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-3.5 w-3.5" /> Show seed phrase
-                          </>
-                        )}
-                      </button>
+              {/* Choose mode */}
+              {walletMode === 'choose' && (
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setWalletMode('existing')}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-white/10 hover:border-white/25 hover:bg-white/5 transition-colors text-left"
+                  >
+                    <Wallet className="h-5 w-5 text-violet-400 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm font-medium">Use my existing wallet</p>
+                      <p className="text-xs text-muted-foreground">Connect Yours Wallet, HandCash, or RelayX</p>
                     </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWalletMode('generate')}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-white/10 hover:border-white/25 hover:bg-white/5 transition-colors text-left"
+                  >
+                    <span className="text-lg flex-shrink-0">✨</span>
+                    <div>
+                      <p className="text-sm font-medium">Generate a new wallet</p>
+                      <p className="text-xs text-muted-foreground">We&apos;ll create a fresh BSV wallet for you</p>
+                    </div>
+                  </button>
+                </div>
+              )}
 
-                    <div className="relative grid grid-cols-3 gap-2">
-                      {words.map((word, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-1.5 glass rounded-lg px-2.5 py-2"
-                        >
-                          <span className="text-[10px] text-muted-foreground w-4 text-right flex-shrink-0">
-                            {i + 1}
-                          </span>
-                          <span
-                            className={`font-mono text-xs ${seedVisible ? 'text-white' : 'blur-sm text-white select-none'}`}
-                          >
-                            {word}
-                          </span>
-                        </div>
-                      ))}
-                      {!seedVisible && (
-                        <div className="absolute inset-0 flex items-center justify-center">
+              {/* Existing wallet flow */}
+              {walletMode === 'existing' && (
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => { setWalletMode('choose'); setExistingWallet(null) }}
+                    className="text-xs text-muted-foreground hover:text-white transition-colors"
+                  >
+                    ← Back
+                  </button>
+                  {!existingWallet ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">Connect your BSV wallet to link it to your profile.</p>
+                      <WalletConnector
+                        onConnected={(conn) => setExistingWallet(conn)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="glass rounded-xl p-4 space-y-1.5">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Connected</p>
+                        <p className="text-xs font-mono break-all">{existingWallet.ordAddress}</p>
+                        {existingWallet.bsvAddress !== existingWallet.ordAddress && (
+                          <p className="text-xs font-mono text-muted-foreground break-all">Payment: {existingWallet.bsvAddress}</p>
+                        )}
+                      </div>
+                      {serverError && (
+                        <p className="text-xs text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">{serverError}</p>
+                      )}
+                      <Button onClick={handleSaveExistingWallet} className="w-full" disabled={savingWallet}>
+                        {savingWallet ? 'Saving...' : 'Use this wallet & submit application'}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Generate new wallet flow */}
+              {walletMode === 'generate' && (
+                <div className="space-y-4">
+                  <button
+                    type="button"
+                    onClick={() => { setWalletMode('choose'); setWallet(null); setSeedConfirmed(false) }}
+                    className="text-xs text-muted-foreground hover:text-white transition-colors"
+                  >
+                    ← Back
+                  </button>
+
+                  <p className="text-xs text-muted-foreground">
+                    <strong className="text-white">We will never see your seed phrase or private key.</strong>{' '}
+                    If you lose it, no one can recover your funds.
+                  </p>
+
+                  {!wallet ? (
+                    <Button onClick={handleGenerateWallet} className="w-full">
+                      Generate my BSV wallet
+                    </Button>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-medium text-muted-foreground">Your 12-word seed phrase</p>
                           <button
                             type="button"
-                            onClick={() => setSeedVisible(true)}
-                            className="text-xs text-white/80 hover:text-white bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-lg transition-colors"
+                            onClick={() => setSeedVisible((v) => !v)}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-white transition-colors"
                           >
-                            Click to reveal
+                            {seedVisible ? <><EyeOff className="h-3.5 w-3.5" /> Hide</> : <><Eye className="h-3.5 w-3.5" /> Show seed phrase</>}
                           </button>
                         </div>
+                        <div className="relative grid grid-cols-3 gap-2">
+                          {words.map((word, i) => (
+                            <div key={i} className="flex items-center gap-1.5 glass rounded-lg px-2.5 py-2">
+                              <span className="text-[10px] text-muted-foreground w-4 text-right flex-shrink-0">{i + 1}</span>
+                              <span className={`font-mono text-xs ${seedVisible ? 'text-white' : 'blur-sm text-white select-none'}`}>{word}</span>
+                            </div>
+                          ))}
+                          {!seedVisible && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <button type="button" onClick={() => setSeedVisible(true)} className="text-xs text-white/80 hover:text-white bg-black/40 backdrop-blur-sm px-3 py-1.5 rounded-lg transition-colors">
+                                Click to reveal
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-mono text-muted-foreground bg-white/5 rounded-lg px-3 py-2 break-all">
+                            Payment: {wallet.address}
+                          </p>
+                          <p className="text-xs font-mono text-muted-foreground bg-white/5 rounded-lg px-3 py-2 break-all">
+                            Ordinals: {wallet.ordAddress}
+                          </p>
+                        </div>
+                      </div>
+                      <label className="flex items-start gap-2.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/5"
+                          checked={seedConfirmed}
+                          onChange={(e) => setSeedConfirmed(e.target.checked)}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          I have saved my seed phrase in a safe place. I understand that{' '}
+                          <strong className="text-white">if I lose it, no one can recover my funds</strong>.
+                        </span>
+                      </label>
+                      {serverError && (
+                        <p className="text-xs text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">{serverError}</p>
                       )}
+                      <Button onClick={handleSaveWallet} className="w-full" disabled={!seedConfirmed || savingWallet}>
+                        {savingWallet ? 'Saving...' : 'Save wallet & submit application'}
+                      </Button>
                     </div>
-
-                    <p className="text-xs font-mono text-muted-foreground bg-white/5 rounded-lg px-3 py-2 break-all">
-                      Address: {wallet.address}
-                    </p>
-                  </div>
-
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 h-4 w-4 rounded border-white/20 bg-white/5"
-                      checked={seedConfirmed}
-                      onChange={(e) => setSeedConfirmed(e.target.checked)}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      I have saved my seed phrase in a safe place. I understand that{' '}
-                      <strong className="text-white">if I lose it, no one can recover my funds</strong>.
-                    </span>
-                  </label>
-
-                  {serverError && (
-                    <p className="text-xs text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
-                      {serverError}
-                    </p>
                   )}
-
-                  <Button
-                    onClick={handleSaveWallet}
-                    className="w-full"
-                    disabled={!seedConfirmed || savingWallet}
-                  >
-                    {savingWallet ? 'Saving...' : 'Save wallet & submit application'}
-                  </Button>
                 </div>
               )}
             </div>

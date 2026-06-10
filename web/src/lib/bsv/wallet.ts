@@ -9,7 +9,10 @@ import { HD, Mnemonic, PrivateKey } from '@bsv/sdk'
 
 export interface WalletResult {
   mnemonic: string
+  /** BSV payment address — m/44'/236'/0'/0/0 — used for payouts */
   address: string
+  /** Ordinals address — m/44'/236'/1'/0/0 — used for 1Sat ordinals ownership */
+  ordAddress: string
   wif: string
 }
 
@@ -24,16 +27,19 @@ export function generateWallet(): WalletResult {
   const seed = mnemonic.toSeed()
   const masterKey = HD.fromSeed(seed)
 
-  // Derive at BIP44 path m/44'/236'/0'/0/0 (BSV coin type 236)
-  const derived = masterKey
-    .derive("m/44'/236'/0'/0/0")
-  const privateKey = derived.privKey
-  const address = privateKey.toAddress().toString()
-  const wif = privateKey.toWif()
+  // Payment address — m/44'/236'/0'/0/0
+  const paymentKey = masterKey.derive("m/44'/236'/0'/0/0").privKey
+  const address = paymentKey.toAddress().toString()
+  const wif = paymentKey.toWif()
+
+  // Ordinals address — m/44'/236'/1'/0/0 (account index 1 = ordinals)
+  const ordKey = masterKey.derive("m/44'/236'/1'/0/0").privKey
+  const ordAddress = ordKey.toAddress().toString()
 
   return {
     mnemonic: mnemonic.toString(),
     address,
+    ordAddress,
     wif,
   }
 }

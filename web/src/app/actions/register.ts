@@ -36,13 +36,24 @@ export async function createArtistProfile(
   return { error: null }
 }
 
-export async function saveWalletAddress(userId: string, address: string) {
+export async function saveWalletAddress(
+  userId: string,
+  address: string,
+  ordAddress?: string,
+  isExternal = false,
+) {
   const supabase = createAdminClient()
 
-  const { error } = await supabase
-    .from('wallets')
-    .insert({ user_id: userId, address, public_key: address, is_external: false })
+  const rows = [
+    { user_id: userId, address, public_key: address, is_external: isExternal, label: 'Primary' },
+  ]
 
+  // Save a separate ordinals address row when it differs from the payment address
+  if (ordAddress && ordAddress !== address) {
+    rows.push({ user_id: userId, address: ordAddress, public_key: ordAddress, is_external: isExternal, label: 'Ordinals' })
+  }
+
+  const { error } = await supabase.from('wallets').insert(rows)
   if (error) return { error: error.message }
   return { error: null }
 }
