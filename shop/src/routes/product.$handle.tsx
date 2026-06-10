@@ -4,7 +4,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { useEmbedMode } from "@/hooks/useEmbedMode";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
+import { Loader2, ExternalLink, Minus, Plus, Trash2, ShoppingBag, ArrowLeft } from "lucide-react";
 import { useCartStore } from "@/stores/cartStore";
 import {
   PRODUCT_BY_HANDLE_QUERY,
@@ -75,8 +75,9 @@ function ProductPage() {
   const [product, setProduct] = useState<ProductNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
-  const addItem = useCartStore((s) => s.addItem);
-  const isLoading = useCartStore((s) => s.isLoading);
+  const [showEmbedCart, setShowEmbedCart] = useState(false);
+  const { addItem, items, isLoading, isSyncing, updateQuantity, removeItem, getCheckoutUrl } =
+    useCartStore();
 
   useEffect(() => {
     let cancelled = false;
@@ -136,6 +137,10 @@ function ProductPage() {
     product.variants.edges[0]?.node;
   const images = product.images.edges;
 
+  const totalItems = items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalPrice = items.reduce((sum, i) => sum + parseFloat(i.price.amount) * i.quantity, 0);
+  const currency = items[0]?.price.currencyCode || "CAD";
+
   const handleAdd = async () => {
     if (!variant) return;
     await addItem({
@@ -146,10 +151,138 @@ function ProductPage() {
       quantity: 1,
       selectedOptions: variant.selectedOptions || [],
     });
-    toast.success("Added to cart", { description: product.title, position: "top-center" });
+    if (isEmbed) {
+      setShowEmbedCart(true);
+    } else {
+      toast.success("Added to cart", { description: product.title, position: "top-center" });
+    }
+  };
+
+  const handleCheckout = () => {
+    const url = getCheckoutUrl();
+    if (url) window.open(url, "_blank");
   };
 
   const firstImage = images[0];
+
+  if (isEmbed && showEmbedCart) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <div className="flex-1 flex flex-col px-4 py-4 max-w-lg mx-auto w-full">
+          <button
+            type="button"
+            onClick={() => setShowEmbedCart(false)}
+            className="flex items-center gap-1.5 text-xs uppercase tracking-[0.15em] text-muted-foreground hover:text-foreground mb-6 self-start"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to product
+          </button>
+
+          <h2 className="font-display text-2xl mb-6">Your Cart</h2>
+
+          {items.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 text-center py-12">
+              <ShoppingBag className="h-10 w-10 text-muted-foreground" />
+              <p className="text-muted-foreground">Your cart is empty</p>
+              <button
+                type="button"
+                onClick={() => setShowEmbedCart(false)}
+                className="text-sm underline underline-offset-4"
+              >
+                Continue shopping
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-6 flex-1">
+                {items.map((item) => (
+                  <div key={item.variantId} className="flex gap-4">
+                    <div className="w-20 h-24 bg-muted overflow-hidden flex-shrink-0">
+                      {item.product.node.images?.edges?.[0]?.node && (
+                        <img
+                          src={item.product.node.images.edges[0].node.url}
+                          alt={item.product.node.title}
+                          className="w-full h-full object-cover"
+                        />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-display text-base leading-tight">{item.product.node.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {item.selectedOptions.map((o) => o.value).join(" · ")}
+                      </p>
+                      <p className="text-sm font-medium mt-1">
+                        {item.price.currencyCode} ${parseFloat(item.price.amount).toFixed(2)}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          type="button"
+                          aria-label="Decrease quantity"
+                          className="h-7 w-7 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+                          onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
+                          disabled={isLoading}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="w-6 text-center text-sm">{item.quantity}</span>
+                        <button
+                          type="button"
+                          aria-label="Increase quantity"
+                          className="h-7 w-7 border border-border flex items-center justify-center hover:border-foreground transition-colors"
+                          onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                          disabled={isLoading}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="Remove item"
+                          className="h-7 w-7 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors ml-auto"
+                          onClick={() => removeItem(item.variantId)}
+                          disabled={isLoading}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t border-border pt-6 mt-6 space-y-3">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Subtotal ({totalItems} {totalItems === 1 ? "item" : "items"})
+                  </span>
+                  <span className="font-display text-xl">
+                    {currency} ${totalPrice.toFixed(2)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Shipping and taxes calculated at checkout.
+                </p>
+                <Button
+                  size="lg"
+                  className="w-full rounded-none h-12 text-xs uppercase tracking-[0.2em]"
+                  onClick={handleCheckout}
+                  disabled={isLoading || isSyncing}
+                >
+                  {isLoading || isSyncing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Proceed to Checkout
+                    </>
+                  )}
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col">
