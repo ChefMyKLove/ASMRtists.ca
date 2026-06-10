@@ -5,9 +5,9 @@ import { ExternalLink, X } from 'lucide-react'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
-  giclee: 'Giclee Print',
+  photo: 'Giclee Print',
   canvas: 'Canvas',
-  poster: 'Poster',
+  poster: 'Fine Art Poster',
   print: 'Print',
 }
 
