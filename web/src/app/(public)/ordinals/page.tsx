@@ -31,6 +31,15 @@ export type ListingItem = {
   }
 }
 
+export type OwnableItem = {
+  id: string
+  title: string
+  thumbnailUrl: string | null
+  inscription_outpoint: string
+  collection: { title: string; slug: string }
+  artist: { username: string; displayName: string }
+}
+
 export default async function OrdinalsPage() {
   const admin = createAdminClient()
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
@@ -101,7 +110,28 @@ export default async function OrdinalsPage() {
     }
   })
 
-  // ── Step 4: active resale listings ─────────────────────────────────────────
+  // ── Step 4: all minted artworks (for wallet-connect ownership detection) ───
+  const { data: mintedRaw } = await admin
+    .from('artwork')
+    .select('id, title, storage_path, jpeg_storage_path, inscription_outpoint, collection_id')
+    .not('inscription_outpoint', 'is', null)
+    .limit(200)
+
+  const ownableItems: OwnableItem[] = (mintedRaw ?? []).flatMap((a) => {
+    const col = colMap.get(a.collection_id)
+    if (!col || !a.inscription_outpoint) return []
+    const profile = profileMap.get(col.artistUserId) ?? { username: '', displayName: 'Artist' }
+    return [{
+      id: a.id,
+      title: a.title,
+      thumbnailUrl: imgUrl((a.jpeg_storage_path ?? a.storage_path) as string | null),
+      inscription_outpoint: a.inscription_outpoint as string,
+      collection: { title: col.title, slug: col.slug },
+      artist: profile,
+    }]
+  })
+
+  // ── Step 5: active resale listings ─────────────────────────────────────────
   let listings: ListingItem[] = []
   try {
     const { data: listingsRaw } = await admin
@@ -140,7 +170,7 @@ export default async function OrdinalsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
-      <OrdinalsClient mintable={mintable} listings={listings} />
+      <OrdinalsClient mintable={mintable} listings={listings} ownableItems={ownableItems} />
     </div>
   )
 }

@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { mintOrdinalAction, createListingAction } from '@/app/actions/ordinals'
 import type { WalletConnection } from '@/lib/wallet/connectors'
-import type { MintableItem, ListingItem } from './page'
+import type { MintableItem, ListingItem, OwnableItem } from './page'
 import {
   ExternalLink,
   Loader2,
@@ -23,6 +23,7 @@ import { truncateAddress } from '@/lib/utils'
 interface Props {
   mintable: MintableItem[]
   listings: ListingItem[]
+  ownableItems: OwnableItem[]
 }
 
 type MintState =
@@ -31,7 +32,7 @@ type MintState =
   | { status: 'done'; txid: string; outpoint: string }
   | { status: 'error'; message: string }
 
-export function OrdinalsClient({ mintable, listings }: Props) {
+export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
   const [wallet, setWallet] = useState<WalletConnection | null>(null)
   const [mintStates, setMintStates] = useState<Record<string, MintState>>({})
   const [listForm, setListForm] = useState({
@@ -41,9 +42,36 @@ export function OrdinalsClient({ mintable, listings }: Props) {
     error: '',
     success: false,
   })
+  const [myOrdinals, setMyOrdinals] = useState<OwnableItem[]>([])
+  const [checkingOwnership, setCheckingOwnership] = useState(false)
 
   function setMintState(id: string, state: MintState) {
     setMintStates((prev) => ({ ...prev, [id]: state }))
+  }
+
+  async function handleWalletConnect(conn: WalletConnection) {
+    setWallet(conn)
+    if (!ownableItems.length) return
+    setCheckingOwnership(true)
+    try {
+      const res = await fetch('/api/ordinals/check-ownership', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outpoints: ownableItems.map((o) => o.inscription_outpoint),
+          addresses: [conn.ordAddress, conn.bsvAddress].filter(Boolean),
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json() as { ownedOutpoints?: string[] }
+        const owned = new Set(data.ownedOutpoints ?? [])
+        setMyOrdinals(ownableItems.filter((o) => owned.has(o.inscription_outpoint)))
+      }
+    } catch {
+      // non-fatal
+    } finally {
+      setCheckingOwnership(false)
+    }
   }
 
   async function handleMint(artworkId: string) {
@@ -93,7 +121,7 @@ export function OrdinalsClient({ mintable, listings }: Props) {
         </div>
         <div className="flex flex-col sm:items-end gap-2 shrink-0">
           <WalletConnector
-            onConnected={(c) => setWallet(c)}
+            onConnected={handleWalletConnect}
             onDisconnected={() => setWallet(null)}
           />
           {!wallet && (
@@ -163,15 +191,45 @@ export function OrdinalsClient({ mintable, listings }: Props) {
         </section>
       )}
 
-      {/* ── Section 3: List Your Ordinal ─────────────────────────────── */}
+      {/* ── Section 3: Your Ordinals (wallet-detected) ───────────────── */}
+      {wallet && (
+        <section className="space-y-5">
+          <div className="flex items-center gap-2">
+            <Tag className="h-4 w-4 text-emerald-400" />
+            <h2 className="text-lg font-semibold">Your Ordinals</h2>
+            {checkingOwnership && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          </div>
+
+          {checkingOwnership ? (
+            <p className="text-sm text-muted-foreground">Checking your wallet for ASMRtists ordinals…</p>
+          ) : myOrdinals.length === 0 ? (
+            <div className="glass rounded-xl p-6 text-sm text-muted-foreground">
+              No ASMRtists ordinals found in this wallet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {myOrdinals.map((item) => (
+                <OwnedOrdinalCard
+                  key={item.id}
+                  item={item}
+                  wallet={wallet}
+                  onListed={() => setMyOrdinals((prev) => prev.filter((o) => o.id !== item.id))}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ── Section 4: List Your Ordinal (manual fallback) ───────────── */}
       <section className="space-y-5">
         <div className="flex items-center gap-2">
-          <Tag className="h-4 w-4 text-emerald-400" />
-          <h2 className="text-lg font-semibold">List Your Ordinal</h2>
+          <Tag className="h-4 w-4 text-emerald-400/50" />
+          <h2 className="text-lg font-semibold text-foreground/60">List by Outpoint</h2>
         </div>
         <p className="text-sm text-muted-foreground -mt-2">
-          Own a minted ASMRtists ordinal? List it here for collectors to buy.
-          Ownership is verified on-chain before your listing goes live.
+          Have an ordinal that wasn&apos;t detected above? Paste the outpoint manually.
+          Format: <span className="font-mono text-xs">txid_0</span>
         </p>
 
         {!wallet ? (
@@ -180,7 +238,7 @@ export function OrdinalsClient({ mintable, listings }: Props) {
               Connect your BSV wallet to list an ordinal for sale.
             </p>
             <WalletConnector
-              onConnected={(c) => setWallet(c)}
+              onConnected={handleWalletConnect}
               onDisconnected={() => setWallet(null)}
             />
           </div>
@@ -259,6 +317,86 @@ export function OrdinalsClient({ mintable, listings }: Props) {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+// ─── OwnedOrdinalCard ────────────────────────────────────────────────────────
+
+function OwnedOrdinalCard({
+  item,
+  wallet,
+  onListed,
+}: {
+  item: OwnableItem
+  wallet: WalletConnection
+  onListed: () => void
+}) {
+  const [price, setPrice] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [listed, setListed] = useState(false)
+
+  async function handleList() {
+    const p = parseFloat(price)
+    if (isNaN(p) || p <= 0) { setError('Enter a valid price'); return }
+    setLoading(true); setError('')
+    const result = await createListingAction(item.inscription_outpoint, p, wallet.ordAddress)
+    setLoading(false)
+    if (result.ok) { setListed(true); onListed() }
+    else setError(result.error ?? 'Failed to create listing')
+  }
+
+  return (
+    <div className="glass rounded-xl overflow-hidden flex flex-col">
+      <div className="aspect-square bg-white/5 relative overflow-hidden">
+        {item.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.thumbnailUrl} alt={item.title} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-white/20">
+            <Tag className="h-8 w-8" />
+          </div>
+        )}
+      </div>
+      <div className="p-3 flex flex-col gap-2 flex-1">
+        <div className="min-w-0">
+          <p className="font-medium text-sm truncate">{item.title}</p>
+          <p className="text-xs text-muted-foreground truncate">
+            by{' '}
+            <Link href={`/c/${item.artist.username}`} className="hover:text-white transition-colors">
+              {item.artist.displayName}
+            </Link>
+          </p>
+        </div>
+        {listed ? (
+          <div className="flex items-center gap-1.5 text-emerald-300 text-xs mt-auto">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Listed successfully
+          </div>
+        ) : (
+          <div className="mt-auto space-y-2">
+            <Input
+              type="number"
+              min="0.01"
+              step="0.01"
+              placeholder="Price in MNEE"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              className="h-8 text-xs bg-white/5 border-white/10"
+              disabled={loading}
+            />
+            {error && (
+              <p className="text-[10px] text-red-400 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3 shrink-0" />{error}
+              </p>
+            )}
+            <Button size="sm" className="w-full" onClick={handleList} disabled={loading || !price}>
+              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'List for Sale'}
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
