@@ -2,6 +2,7 @@ import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { useEmbedMode } from "@/hooks/useEmbedMode";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { useCartStore } from "@/stores/cartStore";
@@ -70,6 +71,7 @@ interface ProductNode {
 
 function ProductPage() {
   const { handle } = Route.useParams();
+  const isEmbed = useEmbedMode();
   const [product, setProduct] = useState<ProductNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
@@ -147,20 +149,36 @@ function ProductPage() {
     toast.success("Added to cart", { description: product.title, position: "top-center" });
   };
 
+  const firstImage = images[0];
+
   return (
     <div className="min-h-screen flex flex-col">
       <SiteHeader />
-      <main className="flex-1 mx-auto max-w-7xl px-6 py-12 md:py-16">
-        <Link
-          to="/"
-          className="text-xs uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
-        >
-          ← Back to shop
-        </Link>
+      <main className={`flex-1 mx-auto w-full max-w-7xl px-4 md:px-6 ${isEmbed ? "py-4 md:py-6" : "py-12 md:py-16"}`}>
+        {!isEmbed && (
+          <Link
+            to="/"
+            className="text-xs uppercase tracking-[0.2em] text-muted-foreground hover:text-foreground"
+          >
+            ← Back to shop
+          </Link>
+        )}
 
-        <div className="mt-8 grid md:grid-cols-2 gap-12">
+        <div className={`${isEmbed ? "" : "mt-8"} grid md:grid-cols-2 gap-6 md:gap-12`}>
           <div className="space-y-4">
-            {images.length > 0 ? (
+            {isEmbed ? (
+              firstImage ? (
+                <div className="aspect-[4/3] bg-muted overflow-hidden">
+                  <img
+                    src={firstImage.node.url}
+                    alt={firstImage.node.altText || product.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="aspect-[4/3] bg-muted" />
+              )
+            ) : images.length > 0 ? (
               images.map((img, i) => (
                 <div key={i} className="aspect-[4/5] bg-muted overflow-hidden">
                   <img
@@ -175,31 +193,32 @@ function ProductPage() {
             )}
           </div>
 
-          <div className="md:sticky md:top-24 self-start">
+          <div className={`${isEmbed ? "self-start" : "md:sticky md:top-24 self-start"}`}>
             {product.vendor && (
               <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
                 {product.vendor}
               </p>
             )}
-            <h1 className="font-display text-4xl md:text-5xl mt-2">{product.title}</h1>
-            <p className="mt-4 font-display text-2xl">
+            <h1 className={`font-display mt-2 ${isEmbed ? "text-2xl md:text-3xl" : "text-4xl md:text-5xl"}`}>{product.title}</h1>
+            <p className="mt-3 font-display text-xl">
               {variant?.price.currencyCode} ${parseFloat(variant?.price.amount ?? "0").toFixed(2)}
             </p>
 
-            {product.description && (
+            {!isEmbed && product.description && (
               <p className="mt-6 text-muted-foreground leading-relaxed whitespace-pre-line">
                 {product.description}
               </p>
             )}
 
             {product.variants.edges.length > 1 && (
-              <div className="mt-8">
+              <div className="mt-6">
                 <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-3">
                   Edition
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {product.variants.edges.map((v) => (
                     <button
+                      type="button"
                       key={v.node.id}
                       onClick={() => setSelectedVariantId(v.node.id)}
                       disabled={!v.node.availableForSale}
@@ -218,7 +237,7 @@ function ProductPage() {
 
             <Button
               size="lg"
-              className="mt-10 w-full rounded-none h-12 text-xs uppercase tracking-[0.2em]"
+              className="mt-6 w-full rounded-none h-12 text-xs uppercase tracking-[0.2em]"
               onClick={handleAdd}
               disabled={!variant?.availableForSale || isLoading}
             >
@@ -231,11 +250,13 @@ function ProductPage() {
               )}
             </Button>
 
-            <ul className="mt-8 space-y-2 text-sm text-muted-foreground">
-              <li>· Available on fine-art paper, poster or canvas</li>
-              <li>· Printed on demand — never overstocked</li>
-              <li>· Part of the ASMRtists open roster</li>
-            </ul>
+            {!isEmbed && (
+              <ul className="mt-8 space-y-2 text-sm text-muted-foreground">
+                <li>· Available on fine-art paper, poster or canvas</li>
+                <li>· Printed on demand — never overstocked</li>
+                <li>· Part of the ASMRtists open roster</li>
+              </ul>
+            )}
           </div>
         </div>
       </main>
