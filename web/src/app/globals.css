@@ -214,6 +214,31 @@
   opacity: 0.5;
 }
 
+/* Letter-by-letter slide-in from left */
+@keyframes letterSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.letter-slide-in {
+  display: inline-block;
+  animation: letterSlideIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-play-state: paused;
+  will-change: transform, opacity, filter;
+}
+
+[data-playing="true"] .letter-slide-in {
+  animation-play-state: running;
+}
+
 /* Scrolling ticker animation */
 @keyframes ticker {
   0% { transform: translateX(0); }

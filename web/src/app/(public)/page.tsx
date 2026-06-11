@@ -4,6 +4,7 @@ import Image from 'next/image'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { AnimatedRoster } from '@/components/splash/animated-roster'
 
 export const metadata: Metadata = {
   title: 'ASMRtists.ca — Art Splash Marketing Roster',
@@ -140,9 +141,7 @@ export default async function HomePage() {
       {/* ── Left column ─────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col justify-center px-6 sm:px-10 lg:px-16 xl:px-20 py-14 lg:py-20 lg:max-w-[52%]">
 
-        <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground mb-4">
-          Art Splash Marketing Roster
-        </p>
+        <AnimatedRoster />
 
         <h1 className="text-4xl sm:text-5xl font-bold leading-tight mb-4">
           A place where your art finds its people.
@@ -160,20 +159,20 @@ export default async function HomePage() {
             <div
               key={role.key}
               className={cn(
-                'glass rounded-xl p-4 flex flex-col gap-3',
+                'glass rounded-xl p-6 flex flex-col gap-4',
                 role.featured && `border ${role.accentBorder}`,
               )}
             >
+              <div className="flex-1 space-y-2">
+                <h2 className={cn('font-bold text-xl leading-snug', role.color)}>
+                  {role.label}
+                </h2>
               {role.badge && (
-                <span className={cn('text-[10px] font-medium px-2 py-0.5 rounded-full w-fit', role.badgeColor)}>
+                <span className={cn('text-[9px] font-medium px-2 py-0.5 rounded-full w-fit', role.badgeColor)}>
                   {role.badge}
                 </span>
               )}
-              <div className="flex-1 space-y-1.5">
-                <h2 className={cn('font-semibold text-sm', role.color)}>
-                  {role.label}
-                </h2>
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-4">
+                <p className="text-base text-muted-foreground leading-relaxed line-clamp-5">
                   {role.description}
                 </p>
               </div>
@@ -190,8 +189,22 @@ export default async function HomePage() {
           ))}
         </div>
 
+        {/* Secondary links */}
+        <div className="flex items-center justify-around text-sm border-t border-white/10 pt-5 mb-5 rainbow-text">
+          <span className="text-center">
+            Already have an account?{' '}
+            <Link href="/login" className="underline underline-offset-4 transition-colors">
+              Sign in
+            </Link>
+          </span>
+          <span className="opacity-30">·</span>
+          <Link href="/about" className="text-center underline underline-offset-4 transition-colors">
+            Learn how it works
+          </Link>
+        </div>
+
         {/* Quick-nav buttons */}
-        <div className="grid grid-cols-3 gap-2 mb-4">
+        <div className="grid grid-cols-3 gap-2">
           {[
             { label: 'Browse Collections', href: '/browse' },
             { label: 'Browse Artists',     href: '/browse' },
@@ -202,26 +215,12 @@ export default async function HomePage() {
               href={href}
               className={cn(
                 buttonVariants({ variant: 'ghost', size: 'sm' }),
-                'border border-white/10 hover:border-white/25 hover:bg-white/5 text-white/60 hover:text-white transition-all text-xs h-9 rounded-lg',
+                'border border-white/10 hover:border-white/25 hover:bg-white/5 rainbow-text transition-all text-xs h-9 rounded-lg',
               )}
             >
               {label}
             </Link>
           ))}
-        </div>
-
-        {/* Secondary links */}
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-muted-foreground border-t border-white/10 pt-4">
-          <span>
-            Already have an account?{' '}
-            <Link href="/login" className="underline underline-offset-4 hover:text-foreground transition-colors">
-              Sign in
-            </Link>
-          </span>
-          <span className="hidden sm:inline text-white/20">·</span>
-          <Link href="/about" className="underline underline-offset-4 hover:text-foreground transition-colors">
-            Learn how it works
-          </Link>
         </div>
       </div>
 
