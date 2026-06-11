@@ -6,7 +6,7 @@ import { WalletConnector } from '@/components/wallet/wallet-connector'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { mintOrdinalAction, createListingAction } from '@/app/actions/ordinals'
+import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction } from '@/app/actions/ordinals'
 import type { WalletConnection } from '@/lib/wallet/connectors'
 import type { MintableItem, ListingItem, OwnableItem } from './page'
 import {
@@ -89,16 +89,43 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
     if (!wallet || !listForm.outpoint.trim() || !listForm.price) return
     const price = parseFloat(listForm.price)
     if (isNaN(price) || price <= 0) {
-      setListForm((f) => ({ ...f, error: 'Enter a valid price' }))
-      return
+      setListForm((f) => ({ ...f, error: 'Enter a valid price' })); return
     }
     setListForm((f) => ({ ...f, loading: true, error: '' }))
-    const result = await createListingAction(listForm.outpoint.trim(), price, wallet.ordAddress)
-    if (result.ok) {
-      setListForm({ outpoint: '', price: '', loading: false, error: '', success: true })
-    } else {
-      setListForm((f) => ({ ...f, loading: false, error: result.error ?? 'Failed to create listing' }))
+    const rawOutpoint = listForm.outpoint.trim()
+    const normalizedOutpoint = /^[0-9a-f]{64}$/i.test(rawOutpoint) ? `${rawOutpoint}_0` : rawOutpoint
+    const result = await createListingAction(normalizedOutpoint, price, wallet.ordAddress, wallet.bsvAddress)
+    if (!result.ok || !result.listingId || !result.escrowAddress) {
+      setListForm((f) => ({ ...f, loading: false, error: result.error ?? 'Failed to create listing' })); return
     }
+
+    // Transfer ordinal to escrow via wallet
+    const yours = (window.yours ?? (window as any).YoursWallet) as (typeof window.yours) | undefined
+    if (!yours?.sendOrdinals) {
+      setListForm((f) => ({ ...f, loading: false, error: 'Yours Wallet sendOrdinals not available — update your wallet extension' })); return
+    }
+
+    let escrowTxids: string[]
+    try {
+      escrowTxids = await yours.sendOrdinals({
+        address: result.escrowAddress,
+        outpoints: [normalizedOutpoint],
+      })
+    } catch (err) {
+      setListForm((f) => ({ ...f, loading: false, error: err instanceof Error ? err.message : 'Wallet rejected the transfer' })); return
+    }
+
+    const escrowTxid = escrowTxids[0]
+    if (!escrowTxid) {
+      setListForm((f) => ({ ...f, loading: false, error: 'Wallet did not return a txid' })); return
+    }
+
+    const confirm = await confirmListingEscrow(result.listingId, escrowTxid)
+    if (!confirm.ok) {
+      setListForm((f) => ({ ...f, loading: false, error: confirm.error ?? 'Could not confirm escrow' })); return
+    }
+
+    setListForm({ outpoint: '', price: '', loading: false, error: '', success: true })
   }
 
   const mintedIds = new Set(
@@ -185,7 +212,7 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {listings.map((listing) => (
-              <ListingCard key={listing.id} listing={listing} />
+              <ListingCard key={listing.id} listing={listing} wallet={wallet} />
             ))}
           </div>
         </section>
@@ -248,7 +275,7 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
             <div>
               <p className="text-sm font-medium">Listing created successfully</p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Your ordinal will appear in the &ldquo;Listed for Sale&rdquo; section shortly.
+                Ordinal secured in escrow — your listing is now live.
               </p>
               <button
                 className="text-xs text-violet-400 hover:text-violet-300 mt-2"
@@ -323,6 +350,8 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
 
 // ─── OwnedOrdinalCard ────────────────────────────────────────────────────────
 
+type ListStage = 'idle' | 'db' | 'escrow' | 'confirming' | 'done' | 'error'
+
 function OwnedOrdinalCard({
   item,
   wallet,
@@ -333,18 +362,59 @@ function OwnedOrdinalCard({
   onListed: () => void
 }) {
   const [price, setPrice] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [stage, setStage] = useState<ListStage>('idle')
   const [error, setError] = useState('')
-  const [listed, setListed] = useState(false)
 
   async function handleList() {
     const p = parseFloat(price)
     if (isNaN(p) || p <= 0) { setError('Enter a valid price'); return }
-    setLoading(true); setError('')
-    const result = await createListingAction(item.inscription_outpoint, p, wallet.ordAddress)
-    setLoading(false)
-    if (result.ok) { setListed(true); onListed() }
-    else setError(result.error ?? 'Failed to create listing')
+    setStage('db'); setError('')
+
+    // 1. Create DB listing — returns listingId + escrow address
+    const result = await createListingAction(item.inscription_outpoint, p, wallet.ordAddress, wallet.bsvAddress)
+    if (!result.ok || !result.listingId || !result.escrowAddress) {
+      setStage('error'); setError(result.error ?? 'Failed to create listing'); return
+    }
+
+    setStage('escrow')
+
+    // 2. Transfer ordinal to platform escrow via Yours Wallet
+    const yours = (window.yours ?? (window as any).YoursWallet) as (typeof window.yours) | undefined
+    if (!yours?.sendOrdinals) {
+      setStage('error'); setError('Yours Wallet sendOrdinals not available — update your wallet extension'); return
+    }
+
+    let escrowTxids: string[]
+    try {
+      escrowTxids = await yours.sendOrdinals({
+        address: result.escrowAddress,
+        outpoints: [item.inscription_outpoint],
+      })
+    } catch (err) {
+      setStage('error'); setError(err instanceof Error ? err.message : 'Wallet rejected the transfer'); return
+    }
+
+    const escrowTxid = escrowTxids[0]
+    if (!escrowTxid) { setStage('error'); setError('Wallet did not return a txid'); return }
+
+    setStage('confirming')
+
+    // 3. Record escrow txid → listing goes live
+    const confirm = await confirmListingEscrow(result.listingId, escrowTxid)
+    if (!confirm.ok) {
+      setStage('error'); setError(confirm.error ?? 'Could not confirm escrow'); return
+    }
+
+    setStage('done'); onListed()
+  }
+
+  const stageLabel: Record<ListStage, string> = {
+    idle: 'List for Sale',
+    db: 'Creating listing…',
+    escrow: 'Approve transfer in wallet…',
+    confirming: 'Confirming…',
+    done: 'Listed!',
+    error: 'List for Sale',
   }
 
   return (
@@ -369,10 +439,10 @@ function OwnedOrdinalCard({
             </Link>
           </p>
         </div>
-        {listed ? (
+        {stage === 'done' ? (
           <div className="flex items-center gap-1.5 text-emerald-300 text-xs mt-auto">
             <CheckCircle2 className="h-3.5 w-3.5" />
-            Listed successfully
+            Listed — ordinal secured in escrow
           </div>
         ) : (
           <div className="mt-auto space-y-2">
@@ -384,16 +454,29 @@ function OwnedOrdinalCard({
               value={price}
               onChange={(e) => setPrice(e.target.value)}
               className="h-8 text-xs bg-white/5 border-white/10"
-              disabled={loading}
+              disabled={stage !== 'idle' && stage !== 'error'}
             />
             {error && (
               <p className="text-[10px] text-red-400 flex items-center gap-1">
                 <AlertCircle className="h-3 w-3 shrink-0" />{error}
               </p>
             )}
-            <Button size="sm" className="w-full" onClick={handleList} disabled={loading || !price}>
-              {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'List for Sale'}
+            <Button
+              size="sm"
+              className="w-full"
+              onClick={handleList}
+              disabled={(stage !== 'idle' && stage !== 'error') || !price}
+            >
+              {(stage === 'db' || stage === 'escrow' || stage === 'confirming')
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />{stageLabel[stage]}</>
+                : stageLabel[stage]
+              }
             </Button>
+            {stage === 'escrow' && (
+              <p className="text-[10px] text-amber-300/70">
+                Your wallet will prompt you to approve sending the ordinal to platform escrow.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -510,7 +593,58 @@ function MintCard({
 
 // ─── ListingCard ──────────────────────────────────────────────────────────────
 
-function ListingCard({ listing }: { listing: ListingItem }) {
+type BuyStage = 'idle' | 'paying' | 'delivering' | 'done' | 'error'
+
+function ListingCard({
+  listing,
+  wallet,
+}: {
+  listing: ListingItem
+  wallet: WalletConnection | null
+}) {
+  const [stage, setStage] = useState<BuyStage>('idle')
+  const [error, setError] = useState('')
+  const [saleTxid, setSaleTxid] = useState('')
+
+  async function handleBuy() {
+    if (!wallet) return
+    setStage('paying'); setError('')
+
+    const yours = (window.yours ?? (window as any).YoursWallet) as (typeof window.yours) | undefined
+    if (!yours?.sendBsv) {
+      setStage('error'); setError('Yours Wallet not available — update your wallet extension'); return
+    }
+
+    // Send price_mnee value as satoshis to seller (placeholder until MNEE token payment)
+    const totalSats = Math.max(1, Math.floor(Number(listing.price_mnee)))
+    let paymentTxid: string
+    try {
+      paymentTxid = await yours.sendBsv([
+        { address: listing.seller_ord_address, satoshis: totalSats },
+      ])
+    } catch (err) {
+      setStage('error'); setError(err instanceof Error ? err.message : 'Payment rejected'); return
+    }
+
+    setStage('delivering')
+
+    const result = await purchaseListingAction(listing.id, wallet.ordAddress, paymentTxid)
+    if (!result.ok) {
+      setStage('error'); setError(result.error ?? 'Delivery failed'); return
+    }
+
+    setSaleTxid(result.saleTxid ?? '')
+    setStage('done')
+  }
+
+  const stageLabel: Record<BuyStage, string> = {
+    idle: `Buy Now — ${listing.price_mnee} MNEE`,
+    paying: 'Approve payment in wallet…',
+    delivering: 'Delivering ordinal…',
+    done: 'Purchased!',
+    error: `Buy Now — ${listing.price_mnee} MNEE`,
+  }
+
   return (
     <div className="glass rounded-xl overflow-hidden flex flex-col">
       <div className="aspect-square bg-white/5 relative overflow-hidden">
@@ -551,9 +685,51 @@ function ListingCard({ listing }: { listing: ListingItem }) {
         </div>
 
         <div className="mt-auto">
-          <Button size="sm" variant="outline" className="w-full border-amber-500/30 text-amber-300 hover:bg-amber-500/5" disabled>
-            Buy Now <span className="ml-1.5 text-[10px] text-white/40">(coming soon)</span>
-          </Button>
+          {stage === 'done' ? (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-emerald-300 text-xs">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <span>Ordinal delivered to your wallet!</span>
+              </div>
+              {saleTxid && (
+                <a
+                  href={`https://whatsonchain.com/tx/${saleTxid}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-[10px] font-mono text-white/40 hover:text-white/70 transition-colors"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  {saleTxid.slice(0, 10)}…
+                </a>
+              )}
+            </div>
+          ) : !wallet ? (
+            <WalletConnector />
+          ) : (
+            <>
+              {error && (
+                <p className="text-[10px] text-red-400 flex items-center gap-1 mb-1.5">
+                  <AlertCircle className="h-3 w-3 shrink-0" />{error}
+                </p>
+              )}
+              <Button
+                size="sm"
+                className="w-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-500/30"
+                disabled={stage !== 'idle' && stage !== 'error'}
+                onClick={handleBuy}
+              >
+                {(stage === 'paying' || stage === 'delivering')
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />{stageLabel[stage]}</>
+                  : stageLabel[stage]
+                }
+              </Button>
+              {stage === 'paying' && (
+                <p className="text-[10px] text-amber-300/70 mt-1">
+                  Approve the BSV payment in your Yours Wallet.
+                </p>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

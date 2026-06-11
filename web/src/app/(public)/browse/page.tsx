@@ -35,16 +35,19 @@ export default async function BrowsePage() {
   const usernameMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p.username as string]))
 
   const ordinalsSet = new Set<string>()
+  const artworkCountMap = new Map<string, number>()
   for (const aw of artworksRes.data ?? []) {
-    if (aw.inscription_outpoint) ordinalsSet.add(aw.artist_id as string)
+    const artistId = aw.artist_id as string
+    if (aw.inscription_outpoint) ordinalsSet.add(artistId)
+    artworkCountMap.set(artistId, (artworkCountMap.get(artistId) ?? 0) + 1)
   }
 
   const artists = profiles.map((ap) => ({
     slug: usernameMap.get(ap.user_id) ?? ap.user_id,
     displayName: (ap.stage_name as string | null) ?? 'Unknown Artist',
     bio: ap.bio as string | null,
-    artworkCount: (ap.piece_count as number) ?? 0,
-    isFeatured: ((ap.piece_count as number) ?? 0) >= 3,
+    artworkCount: artworkCountMap.get(ap.id as string) ?? (ap.piece_count as number) ?? 0,
+    isFeatured: (artworkCountMap.get(ap.id as string) ?? (ap.piece_count as number) ?? 0) >= 3,
     hasOrdinals: ordinalsSet.has(ap.id as string),
     hasPrints: false,
     bannerUrl: ap.banner_url as string | null,

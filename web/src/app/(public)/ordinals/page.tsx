@@ -118,15 +118,17 @@ export default async function OrdinalsPage() {
     .limit(200)
 
   const ownableItems: OwnableItem[] = (mintedRaw ?? []).flatMap((a) => {
+    if (!a.inscription_outpoint) return []
     const col = colMap.get(a.collection_id)
-    if (!col || !a.inscription_outpoint) return []
-    const profile = profileMap.get(col.artistUserId) ?? { username: '', displayName: 'Artist' }
+    const profile = col
+      ? (profileMap.get(col.artistUserId) ?? { username: '', displayName: 'Artist' })
+      : { username: '', displayName: 'Artist' }
     return [{
       id: a.id,
       title: a.title,
       thumbnailUrl: imgUrl((a.jpeg_storage_path ?? a.storage_path) as string | null),
       inscription_outpoint: a.inscription_outpoint as string,
-      collection: { title: col.title, slug: col.slug },
+      collection: { title: col?.title ?? '', slug: col?.slug ?? '' },
       artist: profile,
     }]
   })

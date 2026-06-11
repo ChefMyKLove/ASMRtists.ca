@@ -56,6 +56,17 @@ declare global {
       >
       /** Signs with the ordinals private key (m/44'/236'/1'/0/0) */
       signMessage(message: string): Promise<string>
+      /**
+       * Send one or more ordinals (by outpoint) to a BSV address.
+       * Returns an array of broadcast txids (one per ordinal).
+       */
+      sendOrdinals(params: { address: string; outpoints: string[] }): Promise<string[]>
+      /**
+       * Send BSV to one or more recipients.
+       * Used for marketplace payments with revenue splits.
+       * Returns the broadcast txid.
+       */
+      sendBsv(params: { address: string; satoshis: number }[]): Promise<string>
     }
     YoursWallet?: Window['yours']
     babbage?: {

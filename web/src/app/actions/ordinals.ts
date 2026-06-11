@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import sharp from 'sharp'
 import { inscribeWithRetry } from '@/lib/bsv/inscribe'
 import { verifyOwnership } from '@/lib/bsv/auth'
+import { deliverOrdinalFromEscrow, getPlatformEscrowAddress, verifyPaymentTx } from '@/lib/bsv/marketplace'
 
 const JPEG_MAX_BYTES = 400 * 1024 // 400 KB
 
@@ -178,15 +179,26 @@ export async function createListingAction(
   inscriptionOutpoint: string,
   priceMnee: number,
   sellerOrdAddress: string,
-): Promise<{ ok: boolean; error?: string }> {
+  sellerBsvAddress?: string,
+): Promise<{ ok: boolean; listingId?: string; escrowAddress?: string; error?: string }> {
   if (!inscriptionOutpoint || !priceMnee || !sellerOrdAddress) {
     return { ok: false, error: 'All fields are required' }
   }
   if (priceMnee <= 0) return { ok: false, error: 'Price must be greater than 0' }
 
-  // Verify the caller actually holds this ordinal
-  const isOwner = await verifyOwnership(inscriptionOutpoint, sellerOrdAddress)
-  if (!isOwner) {
+  // Try ordAddress first, then bsvAddress as fallback — the ordinal may live at either
+  // depending on which address was active when it was minted.
+  const uniqueCandidates = [...new Set([sellerOrdAddress, ...(sellerBsvAddress ? [sellerBsvAddress] : [])])]
+
+  let confirmedAddress: string | null = null
+  for (const addr of uniqueCandidates) {
+    if (await verifyOwnership(inscriptionOutpoint, addr)) {
+      confirmedAddress = addr
+      break
+    }
+  }
+
+  if (!confirmedAddress) {
     return { ok: false, error: 'Ownership verification failed — are you sure you hold this ordinal?' }
   }
 
@@ -215,14 +227,128 @@ export async function createListingAction(
     return { ok: false, error: 'An active listing already exists for this ordinal' }
   }
 
-  const { error: insertErr } = await admin.from('ordinal_listings').insert({
+  let escrowAddress: string
+  try {
+    escrowAddress = getPlatformEscrowAddress()
+  } catch {
+    return { ok: false, error: 'Platform escrow is not configured' }
+  }
+
+  const { data: inserted, error: insertErr } = await admin.from('ordinal_listings').insert({
     artwork_id: art.id,
     inscription_outpoint: inscriptionOutpoint,
-    seller_ord_address: sellerOrdAddress,
+    seller_ord_address: confirmedAddress,
     price_mnee: priceMnee,
-    status: 'active',
-  })
+    status: 'pending_escrow',
+  }).select('id').single()
 
-  if (insertErr) return { ok: false, error: insertErr.message }
+  if (insertErr || !inserted) return { ok: false, error: insertErr?.message ?? 'Insert failed' }
+  return { ok: true, listingId: inserted.id, escrowAddress }
+}
+
+// ─── Confirm escrow ───────────────────────────────────────────────────────────
+
+/**
+ * Called by the client after the seller's wallet has successfully sent the
+ * ordinal to the platform escrow address. Stores the escrow txid and marks
+ * the listing as active so it appears in the marketplace.
+ */
+export async function confirmListingEscrow(
+  listingId: string,
+  escrowTxid: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!listingId || !escrowTxid) return { ok: false, error: 'listingId and escrowTxid are required' }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('ordinal_listings')
+    .update({ escrow_txid: escrowTxid, status: 'active', updated_at: new Date().toISOString() })
+    .eq('id', listingId)
+    .eq('status', 'pending_escrow')
+
+  if (error) return { ok: false, error: error.message }
   return { ok: true }
+}
+
+// ─── Purchase listing ─────────────────────────────────────────────────────────
+
+/**
+ * Complete a purchase: verify the buyer's payment transaction then deliver
+ * the ordinal from platform escrow to the buyer's ordinals address.
+ *
+ * Revenue split (from payment tx):
+ *   70% → seller_ord_address  (verified via paymentTxid)
+ *   30% → platform-managed split (holders 15%, curators 10%, platform 5%)
+ *          — the client is responsible for including all outputs in sendBsv
+ */
+export async function purchaseListingAction(
+  listingId: string,
+  buyerOrdAddress: string,
+  paymentTxid: string,
+): Promise<{ ok: boolean; saleTxid?: string; error?: string }> {
+  if (!listingId || !buyerOrdAddress || !paymentTxid) {
+    return { ok: false, error: 'listingId, buyerOrdAddress, and paymentTxid are required' }
+  }
+
+  const admin = createAdminClient()
+
+  // Load and validate the listing
+  const { data: listing } = await admin
+    .from('ordinal_listings')
+    .select('id, inscription_outpoint, seller_ord_address, price_mnee, escrow_txid, status')
+    .eq('id', listingId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (!listing) return { ok: false, error: 'Listing not found or not active' }
+  if (!listing.escrow_txid) return { ok: false, error: 'Ordinal has not been transferred to escrow yet' }
+
+  // Verify payment: at least 70% of price_mnee in satoshis went to seller
+  const sellerSats = Math.floor(Number(listing.price_mnee) * 0.70)
+  const paymentValid = await verifyPaymentTx(paymentTxid, listing.seller_ord_address, sellerSats)
+  if (!paymentValid) {
+    return { ok: false, error: 'Payment could not be verified on-chain. Check the txid and try again.' }
+  }
+
+  // Collect all other active escrow txids so the delivery tx doesn't
+  // accidentally consume another seller's ordinal as a fee input.
+  const { data: otherListings } = await admin
+    .from('ordinal_listings')
+    .select('escrow_txid')
+    .eq('status', 'active')
+    .neq('id', listingId)
+    .not('escrow_txid', 'is', null)
+
+  const otherEscrowTxids = (otherListings ?? [])
+    .map((l) => l.escrow_txid as string)
+    .filter(Boolean)
+
+  // Mark as processing to prevent double-delivery
+  await admin
+    .from('ordinal_listings')
+    .update({ status: 'processing', updated_at: new Date().toISOString() })
+    .eq('id', listingId)
+
+  try {
+    const saleTxid = await deliverOrdinalFromEscrow(listing.escrow_txid, buyerOrdAddress, otherEscrowTxids)
+
+    await admin
+      .from('ordinal_listings')
+      .update({
+        status: 'sold',
+        buyer_ord_address: buyerOrdAddress,
+        sale_txid: saleTxid,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', listingId)
+
+    return { ok: true, saleTxid }
+  } catch (err) {
+    // Revert to active so the transaction can be retried
+    await admin
+      .from('ordinal_listings')
+      .update({ status: 'active', updated_at: new Date().toISOString() })
+      .eq('id', listingId)
+    return { ok: false, error: err instanceof Error ? err.message : 'Delivery failed' }
+  }
 }

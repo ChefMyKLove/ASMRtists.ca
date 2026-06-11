@@ -119,8 +119,15 @@ export async function verifyOwnership(outpoint: string, ordAddress: string): Pro
       return false
     }
 
-    // 1sat.app uses dot format; DB stores underscore format
-    let currentOp = outpoint.replace(/_(\d+)$/, '.$1')
+    // 1sat.app uses dot format; DB stores underscore format; caller may pass bare txid
+    let currentOp: string
+    if (outpoint.includes('.')) {
+      currentOp = outpoint
+    } else if (outpoint.includes('_')) {
+      currentOp = outpoint.replace(/_(\d+)$/, '.$1')
+    } else {
+      currentOp = `${outpoint}.0`
+    }
 
     for (let hop = 0; hop < 10; hop++) {
       const txoRes = await fetch(`https://api.1sat.app/1sat/txo/${currentOp}`, {
