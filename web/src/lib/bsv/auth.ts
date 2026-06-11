@@ -96,18 +96,81 @@ export async function verifyChallenge(
  *
  * NOTE: ordAddress is the ORDINALS address (m/44'/236'/1'/0/0), NOT the payment address.
  */
+/**
+ * Verify that ordAddress currently holds the given inscription outpoint.
+ *
+ * Uses the same approach as /api/ordinals/check-ownership:
+ *  1. Follow the spend chain on 1sat.app to find the current UTXO
+ *  2. Fetch raw tx hex from WhatsonChain
+ *  3. Decode with @bsv/sdk and compare the P2PKH locking script
+ *
+ * This is more reliable than checking an `owner` field because 1sat.app
+ * does not always populate that field on the original inscription TXO.
+ */
 export async function verifyOwnership(outpoint: string, ordAddress: string): Promise<boolean> {
   try {
-    // 1sat.app uses dot format (txid.vout); DB stores underscore format (txid_vout)
-    const dotOutpoint = outpoint.replace(/_(\d+)$/, '.$1')
-    const url = `https://api.1sat.app/1sat/txo/${dotOutpoint}`
-    const res = await fetch(url, { next: { revalidate: 0 } })
-    if (!res.ok) return false
-    const data = await res.json()
-    // 1sat.app returns the current lock/owner address
-    const owner: string =
-      data?.owner ?? data?.address ?? data?.lock?.address ?? data?.data?.lock?.address ?? ''
-    return owner.toLowerCase() === ordAddress.toLowerCase()
+    const { Transaction, P2PKH } = await import('@bsv/sdk')
+
+    // Compute expected P2PKH locking script hex for the address
+    let expectedHex: string
+    try {
+      expectedHex = new P2PKH().lock(ordAddress).toHex()
+    } catch {
+      return false
+    }
+
+    // 1sat.app uses dot format; DB stores underscore format
+    let currentOp = outpoint.replace(/_(\d+)$/, '.$1')
+
+    for (let hop = 0; hop < 10; hop++) {
+      const txoRes = await fetch(`https://api.1sat.app/1sat/txo/${currentOp}`, {
+        next: { revalidate: 0 },
+      })
+      if (!txoRes.ok) return false
+
+      const txo = await txoRes.json() as Record<string, unknown>
+      const spend = txo.spend
+
+      if (!spend) {
+        // This is the current UTXO — verify locking script matches the address
+        const [txid, voutStr] = currentOp.split('.')
+        const vout = parseInt(voutStr ?? '0', 10)
+
+        const wocHeaders: Record<string, string> = {}
+        if (process.env.WOC_API_KEY) wocHeaders['Authorization'] = process.env.WOC_API_KEY
+
+        const hexRes = await fetch(
+          `https://api.whatsonchain.com/v1/bsv/main/tx/${txid}/hex`,
+          { headers: wocHeaders },
+        )
+        if (!hexRes.ok) return false
+
+        const rawHex = (await hexRes.text()).trim()
+        let tx: InstanceType<typeof Transaction>
+        try {
+          tx = Transaction.fromHex(rawHex)
+        } catch {
+          return false
+        }
+
+        const output = tx.outputs[vout]
+        if (!output) return false
+
+        const lockHex = output.lockingScript.toHex()
+        // Plain P2PKH: exact match; inscription origin: P2PKH is the prefix
+        return lockHex === expectedHex || lockHex.startsWith(expectedHex)
+      }
+
+      // Follow the spend chain — ordinals move to vout 0 by 1Sat protocol
+      const spendTxid =
+        typeof spend === 'string' ? spend
+        : typeof spend === 'object' ? (spend as Record<string, unknown>).txid as string
+        : null
+      if (!spendTxid) return false
+      currentOp = `${spendTxid}.0`
+    }
+
+    return false
   } catch {
     return false
   }
