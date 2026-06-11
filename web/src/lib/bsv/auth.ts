@@ -98,7 +98,9 @@ export async function verifyChallenge(
  */
 export async function verifyOwnership(outpoint: string, ordAddress: string): Promise<boolean> {
   try {
-    const url = `https://api.1sat.app/1sat/txo/${outpoint}`
+    // 1sat.app uses dot format (txid.vout); DB stores underscore format (txid_vout)
+    const dotOutpoint = outpoint.replace(/_(\d+)$/, '.$1')
+    const url = `https://api.1sat.app/1sat/txo/${dotOutpoint}`
     const res = await fetch(url, { next: { revalidate: 0 } })
     if (!res.ok) return false
     const data = await res.json()
