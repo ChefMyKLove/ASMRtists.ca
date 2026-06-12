@@ -172,15 +172,15 @@ export default async function HomePage() {
                   {role.badge}
                 </span>
               )}
-                <p className="text-base text-muted-foreground leading-relaxed line-clamp-5">
+                <p className="text-base text-muted-foreground leading-relaxed">
                   {role.description}
                 </p>
               </div>
               <Link
                 href={role.href}
                 className={cn(
-                  buttonVariants({ variant: 'outline', size: 'sm' }),
-                  'border-white/20 hover:bg-white/5 w-full justify-center mt-auto text-xs h-8',
+                  buttonVariants({ variant: 'ghost', size: 'sm' }),
+                  'border border-white/10 hover:border-white/25 hover:bg-white/5 rainbow-text transition-all w-full justify-center mt-auto text-xs h-9 rounded-lg',
                 )}
               >
                 {role.cta}
