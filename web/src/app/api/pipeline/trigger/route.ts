@@ -19,24 +19,40 @@ export async function POST(request: NextRequest) {
   }
 
   const webhookUrl = process.env.PIPELINE_WEBHOOK_URL
-  if (!webhookUrl) {
-    console.log(`Pipeline trigger: no PIPELINE_WEBHOOK_URL set — artwork ${artworkId} queued for next run`)
-    return NextResponse.json({ queued: true })
+
+  // If an external pipeline URL is configured, forward to it
+  if (webhookUrl) {
+    try {
+      const res = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ artworkId }),
+      })
+      if (!res.ok) {
+        console.error(`Pipeline webhook returned ${res.status}`)
+        return NextResponse.json({ error: 'Pipeline webhook failed' }, { status: 502 })
+      }
+      return NextResponse.json({ triggered: true })
+    } catch (err) {
+      console.error('Pipeline webhook error:', err)
+      return NextResponse.json({ error: 'Pipeline webhook unreachable' }, { status: 502 })
+    }
   }
 
-  try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ artworkId }),
-    })
-    if (!res.ok) {
-      console.error(`Pipeline webhook returned ${res.status}`)
-      return NextResponse.json({ error: 'Pipeline webhook failed' }, { status: 502 })
-    }
-    return NextResponse.json({ triggered: true })
-  } catch (err) {
-    console.error('Pipeline webhook error:', err)
-    return NextResponse.json({ error: 'Pipeline webhook unreachable' }, { status: 502 })
-  }
+  // No external URL — run internal pipeline (fire-and-forget so this request returns quickly)
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  const processUrl = `${baseUrl}/api/pipeline/process`
+  const pipelineSecret = process.env.PIPELINE_WEBHOOK_SECRET ?? ''
+
+  // Kick off async — don't await so the trigger returns immediately
+  fetch(processUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-pipeline-secret': pipelineSecret,
+    },
+    body: JSON.stringify({ artworkId }),
+  }).catch((err) => console.error('Internal pipeline process error:', err))
+
+  return NextResponse.json({ triggered: true, internal: true })
 }

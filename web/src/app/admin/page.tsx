@@ -188,6 +188,27 @@ function CollectionsQueueTab() {
 
   async function handleApprove(id: string) {
     await supabase.from('collections').update({ status: 'active' }).eq('id', id)
+
+    // Fetch all uploaded artwork IDs in this collection and fire the pipeline for each
+    const { data: artworks } = await supabase
+      .from('artwork')
+      .select('id')
+      .eq('collection_id', id)
+      .eq('status', 'uploaded')
+
+    if (artworks && artworks.length > 0) {
+      const baseUrl = window.location.origin
+      await Promise.allSettled(
+        artworks.map((aw) =>
+          fetch(`${baseUrl}/api/pipeline/trigger`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ artworkId: aw.id }),
+          }),
+        ),
+      )
+    }
+
     load()
   }
 

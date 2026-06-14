@@ -203,11 +203,12 @@ export default async function CollectionDetailPage({ params }: PageProps) {
           <form
             action={async () => {
               'use server'
-              const srv = await createClient()
-              await srv
+              const admin = createAdminClient()
+              await admin
                 .from('collections')
                 .update({ status: 'pending_review' })
                 .eq('id', id)
+              revalidatePath(`/dashboard/collections/${id}`)
             }}
           >
             <button

@@ -245,7 +245,6 @@ export async function approveArtworkAction(
     .from('artwork')
     .update({ status: 'uploaded' })
     .eq('id', artworkId)
-    .eq('status', 'pending_review')
 
   if (error) return { error: error.message }
 
@@ -290,7 +289,6 @@ export async function rejectArtworkAction(
     .from('artwork')
     .update({ status: 'rejected' })
     .eq('id', artworkId)
-    .eq('status', 'pending_review')
 
   if (error) return { error: error.message }
   return { error: null }
