@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { DollarSign, Package, Gem, TrendingUp, Images, Users, Star, Clock } from 'lucide-react'
@@ -193,6 +194,8 @@ export default async function DashboardPage() {
   const displayName = profile?.display_name ?? user?.email ?? 'there'
   const role = (profile?.active_role ?? 'collector') as Role
 
+  if (role === 'admin') redirect('/admin')
+
   return (
     <div className="space-y-8">
       <div>
@@ -205,7 +208,6 @@ export default async function DashboardPage() {
       {role === 'collector' && <CollectorView />}
       {role === 'artist' && <ArtistView />}
       {role === 'curator' && <CuratorView />}
-      {role === 'admin' && <ArtistView />}
     </div>
   )
 }
