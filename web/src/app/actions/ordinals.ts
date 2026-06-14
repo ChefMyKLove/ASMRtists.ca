@@ -246,6 +246,64 @@ export async function createListingAction(
   return { ok: true, listingId: inserted.id, escrowAddress }
 }
 
+// ─── Cancel listing ──────────────────────────────────────────────────────────
+
+/**
+ * Cancel an active or pending-escrow listing.
+ * - pending_escrow: ordinal never left seller's wallet; just mark cancelled in DB.
+ * - active: ordinal is in platform escrow; return it to the seller, then cancel.
+ */
+export async function cancelListingAction(
+  listingId: string,
+  sellerOrdAddress: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (!listingId || !sellerOrdAddress) {
+    return { ok: false, error: 'listingId and sellerOrdAddress are required' }
+  }
+
+  const admin = createAdminClient()
+
+  const { data: listing } = await admin
+    .from('ordinal_listings')
+    .select('id, status, escrow_txid, seller_ord_address')
+    .eq('id', listingId)
+    .eq('seller_ord_address', sellerOrdAddress)
+    .maybeSingle()
+
+  if (!listing) return { ok: false, error: 'Listing not found or access denied' }
+  if (!['active', 'pending_escrow'].includes(listing.status as string)) {
+    return { ok: false, error: 'Listing cannot be cancelled' }
+  }
+
+  if (listing.status === 'active' && listing.escrow_txid) {
+    // Protect other active escrow UTXOs from being consumed as fees
+    const { data: others } = await admin
+      .from('ordinal_listings')
+      .select('escrow_txid')
+      .eq('status', 'active')
+      .neq('id', listingId)
+      .not('escrow_txid', 'is', null)
+
+    const otherEscrowTxids = (others ?? [])
+      .map((l) => l.escrow_txid as string)
+      .filter(Boolean)
+
+    try {
+      await deliverOrdinalFromEscrow(listing.escrow_txid, sellerOrdAddress, otherEscrowTxids)
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Failed to return ordinal from escrow' }
+    }
+  }
+
+  const { error } = await admin
+    .from('ordinal_listings')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', listingId)
+
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
+
 // ─── Confirm escrow ───────────────────────────────────────────────────────────
 
 /**

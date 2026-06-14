@@ -43,7 +43,7 @@ const roles = [
     key: 'curator',
     label: 'I want to champion artists',
     description:
-      'Surface great work, build your reputation, and earn a share of every sale you help drive. Curators are the tastemakers and long-term stewards of the ASMRtists roster.',
+      'Surface great work, build your reputation, and earn a share of every sale you help drive. Curators are the tastemakers and long-term stewards of the roster and play a vital role in the ASMRtists ecosystem.',
     cta: 'Become a curator',
     href: '/register/curator',
     color: 'text-[#ffb3d1]',

@@ -81,7 +81,7 @@ export async function insertArtworkAction(
       title,
       position,
       storage_path: storagePath,
-      status: 'pending_review',
+      status: 'uploaded',
       width_px: widthPx,
       height_px: heightPx,
     })
