@@ -2,6 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  getAdminPendingCollectionsAction,
+  adminApproveCollectionAction,
+  adminRejectCollectionAction,
+  type AdminPendingCollection,
+} from '@/app/actions/collections'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
@@ -28,14 +34,6 @@ interface Application {
   bio: string | null
 }
 
-interface PendingCollection {
-  id: string
-  artist_id: string
-  title: string
-  piece_count: number
-  created_at: string
-  artist_name: string | null
-}
 
 interface ContentFlag {
   id: string
@@ -158,62 +156,25 @@ function ApprovalsTab() {
 // ─── Collections Queue tab ────────────────────────────────────────────────────
 
 function CollectionsQueueTab() {
-  const supabase = createClient()
-  const [collections, setCollections] = useState<PendingCollection[]>([])
+  const [collections, setCollections] = useState<AdminPendingCollection[]>([])
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('collections')
-      .select('id, artist_id, title, piece_count, created_at, profiles(display_name)')
-      .eq('status', 'pending_review')
-      .order('created_at', { ascending: true })
-      .limit(50)
-
-    setCollections(
-      (data ?? []).map((row: any) => ({
-        id: row.id,
-        artist_id: row.artist_id,
-        title: row.title,
-        piece_count: row.piece_count,
-        created_at: row.created_at,
-        artist_name: row.profiles?.display_name ?? null,
-      }))
-    )
+    const { collections: data } = await getAdminPendingCollectionsAction()
+    setCollections(data)
     setLoading(false)
-  }, [supabase])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
   async function handleApprove(id: string) {
-    await supabase.from('collections').update({ status: 'active' }).eq('id', id)
-
-    // Fetch all uploaded artwork IDs in this collection and fire the pipeline for each
-    const { data: artworks } = await supabase
-      .from('artwork')
-      .select('id')
-      .eq('collection_id', id)
-      .eq('status', 'uploaded')
-
-    if (artworks && artworks.length > 0) {
-      const baseUrl = window.location.origin
-      await Promise.allSettled(
-        artworks.map((aw) =>
-          fetch(`${baseUrl}/api/pipeline/trigger`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ artworkId: aw.id }),
-          }),
-        ),
-      )
-    }
-
+    await adminApproveCollectionAction(id)
     load()
   }
 
   async function handleReject(id: string) {
-    await supabase.from('collections').update({ status: 'archived' }).eq('id', id)
+    await adminRejectCollectionAction(id)
     load()
   }
 

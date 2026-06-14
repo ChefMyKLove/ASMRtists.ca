@@ -321,3 +321,132 @@ export async function setCollectionCoverImageAction(
   if (error) return { error: error.message }
   return { error: null }
 }
+
+// ─── Admin actions ────────────────────────────────────────────────────────────
+
+async function requireAdmin(): Promise<{ userId: string } | { error: string }> {
+  const supabase = await createClient()
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return { error: 'Not authenticated' }
+  const admin = createAdminClient()
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('active_role')
+    .eq('id', user.id)
+    .single()
+  if (profile?.active_role !== 'admin') return { error: 'Not authorized' }
+  return { userId: user.id }
+}
+
+export interface AdminPendingCollection {
+  id: string
+  title: string
+  piece_count: number
+  created_at: string
+  artist_name: string | null
+}
+
+export async function getAdminPendingCollectionsAction(): Promise<{
+  collections: AdminPendingCollection[]
+  error: string | null
+}> {
+  const auth = await requireAdmin()
+  if ('error' in auth) return { collections: [], error: auth.error }
+
+  const admin = createAdminClient()
+  const { data, error } = await admin
+    .from('collections')
+    .select('id, title, piece_count, created_at, artist_id')
+    .eq('status', 'pending_review')
+    .order('created_at', { ascending: true })
+    .limit(50)
+
+  if (error) return { collections: [], error: error.message }
+
+  // Resolve artist names via artist_profiles → profiles
+  const collections = await Promise.all(
+    (data ?? []).map(async (row) => {
+      const { data: ap } = await admin
+        .from('artist_profiles')
+        .select('user_id, stage_name')
+        .eq('id', row.artist_id)
+        .single()
+
+      let artist_name = ap?.stage_name ?? null
+      if (!artist_name && ap?.user_id) {
+        const { data: profile } = await admin
+          .from('profiles')
+          .select('display_name')
+          .eq('id', ap.user_id)
+          .single()
+        artist_name = profile?.display_name ?? null
+      }
+
+      return {
+        id: row.id,
+        title: row.title,
+        piece_count: row.piece_count,
+        created_at: row.created_at,
+        artist_name,
+      }
+    })
+  )
+
+  return { collections, error: null }
+}
+
+export async function adminApproveCollectionAction(
+  collectionId: string,
+): Promise<{ error: string | null }> {
+  const auth = await requireAdmin()
+  if ('error' in auth) return { error: auth.error }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('collections')
+    .update({ status: 'active' })
+    .eq('id', collectionId)
+
+  if (error) return { error: error.message }
+
+  // Fire pipeline for all uploaded artworks
+  const { data: artworks } = await admin
+    .from('artwork')
+    .select('id')
+    .eq('collection_id', collectionId)
+    .eq('status', 'uploaded')
+
+  if (artworks && artworks.length > 0) {
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+    await Promise.allSettled(
+      artworks.map((aw) =>
+        fetch(`${baseUrl}/api/pipeline/trigger`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-pipeline-secret': process.env.PIPELINE_WEBHOOK_SECRET ?? '',
+          },
+          body: JSON.stringify({ artworkId: aw.id }),
+        })
+      )
+    )
+  }
+
+  return { error: null }
+}
+
+export async function adminRejectCollectionAction(
+  collectionId: string,
+): Promise<{ error: string | null }> {
+  const auth = await requireAdmin()
+  if ('error' in auth) return { error: auth.error }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from('collections')
+    .update({ status: 'archived' })
+    .eq('id', collectionId)
+
+  if (error) return { error: error.message }
+  return { error: null }
+}
