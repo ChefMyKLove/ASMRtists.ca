@@ -49,12 +49,5 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Admin-only guard
-  if (pathname.startsWith('/admin') && user?.user_metadata?.role !== 'admin') {
-    const redirectUrl = request.nextUrl.clone()
-    redirectUrl.pathname = '/dashboard'
-    return NextResponse.redirect(redirectUrl)
-  }
-
   return supabaseResponse
 }
