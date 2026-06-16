@@ -34,40 +34,46 @@ interface PersistedSession {
   timestamp: number
 }
 
+interface YoursOrdinal {
+  txid: string
+  vout: number
+  /** Current UTXO where the ordinal lives: "txid_vout" */
+  outpoint: string
+  /**
+   * Original inscription outpoint — either a bare "txid_vout" string
+   * or a GorillaPool-style object { outpoint: "txid_vout" }.
+   */
+  origin?: { outpoint?: string } | string
+}
+
 declare global {
   interface Window {
     yours?: {
-      connect(): Promise<{
-        pubkey?: string
-        publicKey?: string
-        address?: string
-        bsvAddress?: string
-        ordAddress?: string
-        identity?: string
-      }>
+      /** v3+: returns a bare string (address/token) or undefined — not an object */
+      connect(): Promise<string | undefined>
+      /** Returns wallet addresses as an object (v3+ only, no array form) */
+      getAddresses(): Promise<{ bsvAddress?: string; ordAddress?: string; identityAddress?: string } | undefined>
+      /** v3+: param is an object; return is a SignedMessage object — read .sig for the signature */
+      signMessage(params: { message: string; encoding?: 'utf8' | 'hex' | 'base64' }): Promise<{ address: string; pubKey: string; sig: string; message: string } | undefined>
       /**
-       * Returns the three wallet addresses.
-       * Object form (preferred): { bsvAddress, ordAddress, identityAddress }
-       * Array form (older API):  [bsvAddress, ordAddress, identityAddress]
+       * Transfer a single ordinal to a BSV address.
+       * origin  = the original inscription outpoint (where it was minted)
+       * outpoint = the current UTXO outpoint (where it sits now)
+       * Returns the broadcast txid, or undefined on failure.
        */
-      getAddresses(): Promise<
-        | { bsvAddress?: string; ordAddress?: string; identityAddress?: string }
-        | string[]
-      >
-      /** Signs with the ordinals private key (m/44'/236'/1'/0/0) */
-      signMessage(message: string): Promise<string>
-      /**
-       * Send one or more ordinals (by outpoint) to a BSV address.
-       * Returns an array of broadcast txids (one per ordinal).
-       */
-      sendOrdinals(params: { address: string; outpoints: string[] }): Promise<string[]>
+      transferOrdinal(params: { address: string; origin: string; outpoint: string }): Promise<string | undefined>
       /**
        * Send BSV to one or more recipients.
-       * Used for marketplace payments with revenue splits.
-       * Returns the broadcast txid.
+       * v3+: returns { txid, rawtx } object, not a bare string.
        */
-      sendBsv(params: { address: string; satoshis: number }[]): Promise<string>
+      sendBsv(params: { address: string; satoshis: number }[]): Promise<{ txid: string; rawtx: string } | undefined>
+      /**
+       * Returns all ordinals held in the wallet with their current UTXO outpoints.
+       * Use this to resolve the live outpoint for a given origin before calling transferOrdinal.
+       */
+      getOrdinals(params?: { limit?: number; offset?: number }): Promise<YoursOrdinal[] | undefined>
     }
+    /** Legacy Panda Wallet injection — kept for very old installs, may never resolve */
     YoursWallet?: Window['yours']
     babbage?: {
       getIdentity(): Promise<{ address: string }>
@@ -117,33 +123,13 @@ export async function connectWallet(type: WalletType): Promise<WalletConnection>
       const connectTimeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Yours Wallet timed out. Try refreshing the page.')), 10_000),
       )
-      // Capture connect() result — some versions return ordAddress here directly
-      type ConnectResult = { bsvAddress?: string; ordAddress?: string; address?: string }
-      const connectResult = await Promise.race([yours.connect(), connectTimeout]) as ConnectResult | void
+      await Promise.race([yours.connect(), connectTimeout])
 
       const addrs = await yours.getAddresses()
 
-      let bsvAddress = ''
-      let ordAddress = ''
-
-      if (Array.isArray(addrs)) {
-        // Array form: [bsvAddress, ordAddress, identityAddress]
-        // slot[0] = bsvAddress = payment address (1LH5U...)
-        // slot[1] = ordAddress = ordinals address (17ZcP...)
-        bsvAddress = (addrs as string[])[0] ?? ''
-        ordAddress = (addrs as string[])[1] ?? ''
-      } else {
-        // Object form: field names match what they actually are
-        // ordAddress field → ordinals address (17ZcP...)
-        // bsvAddress field → payment address (1LH5U...)
-        ordAddress = addrs.ordAddress ?? ''
-        bsvAddress = addrs.bsvAddress ?? addrs.identityAddress ?? ''
-      }
-
-      // If getAddresses() didn't return anything useful, fall back to connect() result
-      if (!ordAddress && connectResult && typeof connectResult === 'object') {
-        ordAddress = connectResult.ordAddress ?? connectResult.bsvAddress ?? ''
-      }
+      // v3+ API: object form only — { bsvAddress, ordAddress, identityAddress }
+      let bsvAddress = addrs?.bsvAddress ?? ''
+      let ordAddress = addrs?.ordAddress ?? ''
 
       if (!ordAddress) {
         throw new Error(
@@ -228,8 +214,10 @@ export async function signMessage(type: WalletType, message: string): Promise<st
     case 'yours': {
       const yours = getYours()
       if (!yours) throw new Error('Yours Wallet not connected.')
-      // Yours Wallet signs with the ordinals private key (m/44'/236'/1'/0/0)
-      return yours.signMessage(message)
+      // v3+ API: param is an object; result is a SignedMessage object — extract .sig
+      const result = await yours.signMessage({ message })
+      if (!result?.sig) throw new Error('Yours Wallet did not return a signature.')
+      return result.sig
     }
     case 'handcash': {
       if (!window.handcash) throw new Error('HandCash not connected.')
@@ -280,6 +268,38 @@ export function loadPersistedSession(): WalletConnection | null {
     return { type: data.type, bsvAddress: data.bsvAddress, ordAddress: data.ordAddress }
   } catch {
     return null
+  }
+}
+
+/**
+ * Resolves the current UTXO outpoint for a given ordinal origin.
+ *
+ * An ordinal's origin (inscription outpoint) never changes, but the UTXO it
+ * lives in does every time it's transferred. YoursWallet's transferOrdinal()
+ * requires BOTH the origin and the live outpoint — call this before listing.
+ *
+ * Falls back to returning `origin` unchanged if the wallet doesn't support
+ * getOrdinals() or the ordinal isn't found (covers unmoved ordinals where
+ * origin === outpoint).
+ */
+export async function resolveCurrentOutpoint(origin: string): Promise<string> {
+  const yours = typeof window !== 'undefined' ? getYours() : null
+  if (!yours?.getOrdinals) return origin
+  try {
+    const ordinals = await yours.getOrdinals()
+    if (!ordinals?.length) return origin
+    const match = ordinals.find((o) => {
+      // GorillaPool-style: origin is { outpoint: "txid_vout" }
+      // Flat style:        origin is "txid_vout"
+      const oOrigin =
+        typeof o.origin === 'string'
+          ? o.origin
+          : (o.origin?.outpoint ?? o.outpoint)
+      return oOrigin === origin || o.outpoint === origin
+    })
+    return match?.outpoint ?? origin
+  } catch {
+    return origin
   }
 }
 

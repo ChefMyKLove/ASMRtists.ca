@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction, cancelListingAction } from '@/app/actions/ordinals'
 import type { WalletConnection } from '@/lib/wallet/connectors'
+import { resolveCurrentOutpoint } from '@/lib/wallet/connectors'
 import type { MintableItem, ListingItem, OwnableItem } from './page'
 import {
   ExternalLink,
@@ -121,25 +122,26 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
       setListForm((f) => ({ ...f, loading: false, error: result.error ?? 'Failed to create listing' })); return
     }
 
-    // Transfer ordinal to escrow via wallet
-    const yours = (window.yours ?? (window as any).YoursWallet) as (typeof window.yours) | undefined
-    if (!yours?.sendOrdinals) {
-      setListForm((f) => ({ ...f, loading: false, error: 'Yours Wallet sendOrdinals not available — update your wallet extension' })); return
+    // Transfer ordinal to escrow via wallet (v3 API: transferOrdinal, singular)
+    const yours = window.yours
+    if (!yours?.transferOrdinal) {
+      setListForm((f) => ({ ...f, loading: false, error: 'Yours Wallet transferOrdinal not available — update your wallet extension' })); return
     }
 
-    let escrowTxids: string[]
+    // Resolve live UTXO outpoint — differs from origin if the ordinal has been transferred
+    const currentOutpoint = await resolveCurrentOutpoint(normalizedOutpoint)
+
+    let escrowTxid: string
     try {
-      escrowTxids = await yours.sendOrdinals({
+      const txid = await yours.transferOrdinal({
         address: result.escrowAddress,
-        outpoints: [normalizedOutpoint],
+        origin: normalizedOutpoint,
+        outpoint: currentOutpoint,
       })
+      if (!txid) throw new Error('Wallet did not return a txid')
+      escrowTxid = txid
     } catch (err) {
       setListForm((f) => ({ ...f, loading: false, error: err instanceof Error ? err.message : 'Wallet rejected the transfer' })); return
-    }
-
-    const escrowTxid = escrowTxids[0]
-    if (!escrowTxid) {
-      setListForm((f) => ({ ...f, loading: false, error: 'Wallet did not return a txid' })); return
     }
 
     const confirm = await confirmListingEscrow(result.listingId, escrowTxid)
@@ -187,11 +189,11 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
         </div>
       </div>
 
-      {/* ── Section 1: Mint Originals ────────────────────────────────── */}
+      {/* ── Section 1: Mint Ordinals ─────────────────────────────────── */}
       <section className="space-y-5">
         <div className="flex items-center gap-2">
           <Gem className="h-4 w-4 text-violet-400" />
-          <h2 className="text-lg font-semibold">Mint Originals</h2>
+          <h2 className="text-lg font-semibold">Mint Ordinals</h2>
           <Badge className="bg-violet-500/15 text-violet-300 border-violet-500/25 text-[10px]">
             {visibleMintable.length}
           </Badge>
@@ -202,7 +204,7 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
 
         {visibleMintable.length === 0 ? (
           <div className="glass rounded-xl p-8 text-center text-muted-foreground text-sm">
-            No originals available right now. Check back after the next council review.
+            No ordinals available right now. Check back after the next council review.
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
@@ -444,24 +446,27 @@ function OwnedOrdinalCard({
 
     setStage('escrow')
 
-    // 2. Transfer ordinal to platform escrow via Yours Wallet
-    const yours = (window.yours ?? (window as any).YoursWallet) as (typeof window.yours) | undefined
-    if (!yours?.sendOrdinals) {
-      setStage('error'); setError('Yours Wallet sendOrdinals not available — update your wallet extension'); return
+    // 2. Transfer ordinal to platform escrow via Yours Wallet (v3 API: transferOrdinal)
+    const yours = window.yours
+    if (!yours?.transferOrdinal) {
+      setStage('error'); setError('Yours Wallet transferOrdinal not available — update your wallet extension'); return
     }
 
-    let escrowTxids: string[]
+    // Resolve live UTXO outpoint — differs from origin if the ordinal has been transferred
+    const currentOutpoint = await resolveCurrentOutpoint(item.inscription_outpoint)
+
+    let escrowTxid: string
     try {
-      escrowTxids = await yours.sendOrdinals({
+      const txid = await yours.transferOrdinal({
         address: result.escrowAddress,
-        outpoints: [item.inscription_outpoint],
+        origin: item.inscription_outpoint,
+        outpoint: currentOutpoint,
       })
+      if (!txid) throw new Error('Wallet did not return a txid')
+      escrowTxid = txid
     } catch (err) {
       setStage('error'); setError(err instanceof Error ? err.message : 'Wallet rejected the transfer'); return
     }
-
-    const escrowTxid = escrowTxids[0]
-    if (!escrowTxid) { setStage('error'); setError('Wallet did not return a txid'); return }
 
     setStage('confirming')
 
@@ -688,7 +693,7 @@ function ListingCard({
     if (!wallet) return
     setStage('paying'); setError('')
 
-    const yours = (window.yours ?? (window as any).YoursWallet) as (typeof window.yours) | undefined
+    const yours = window.yours
     if (!yours?.sendBsv) {
       setStage('error'); setError('Yours Wallet not available — update your wallet extension'); return
     }
@@ -697,9 +702,12 @@ function ListingCard({
     const totalSats = Math.max(1, Math.floor(Number(listing.price_mnee)))
     let paymentTxid: string
     try {
-      paymentTxid = await yours.sendBsv([
+      // v3 API: sendBsv returns { txid, rawtx }, not a bare string
+      const result = await yours.sendBsv([
         { address: listing.seller_ord_address, satoshis: totalSats },
       ])
+      if (!result?.txid) throw new Error('Wallet did not return a txid')
+      paymentTxid = result.txid
     } catch (err) {
       setStage('error'); setError(err instanceof Error ? err.message : 'Payment rejected'); return
     }
