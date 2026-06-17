@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono, Cormorant_Garamond } from 'next/font/google'
 import { Toaster } from '@/components/ui/sonner'
+import { Providers } from '@/components/providers'
 import './globals.css'
 
 const geistSans = Geist({
@@ -44,8 +45,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${cormorant.variable} h-full antialiased dark`}
     >
       <body className="min-h-full flex flex-col aurora-bg">
-          {children}
-          <Toaster richColors position="top-right" />
+          <Providers>
+            {children}
+            <Toaster richColors position="top-right" />
+          </Providers>
         </body>
     </html>
   )

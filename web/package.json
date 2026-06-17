@@ -9,6 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@1sat/actions": "^0.0.166",
+    "@1sat/client": "^0.0.38",
+    "@1sat/connect": "^0.0.70",
+    "@1sat/react": "^0.0.67",
     "@base-ui/react": "^1.4.1",
     "@bsv/sdk": "^2.0.13",
     "@hookform/resolvers": "^5.2.2",

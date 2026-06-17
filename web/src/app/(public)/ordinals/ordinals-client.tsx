@@ -6,9 +6,10 @@ import { WalletConnector } from '@/components/wallet/wallet-connector'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { useWallet } from '@1sat/react'
+import { getOrdinals, transferOrdinals, sendBsv } from '@1sat/actions'
 import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction, cancelListingAction } from '@/app/actions/ordinals'
-import type { WalletConnection } from '@/lib/wallet/connectors'
-import { resolveCurrentOutpoint } from '@/lib/wallet/connectors'
+import { buildActionContext, findOrdinalOutput, type WalletConnection } from '@/lib/wallet/connectors'
 import type { MintableItem, ListingItem, OwnableItem } from './page'
 import {
   ExternalLink,
@@ -43,6 +44,7 @@ type MintState =
   | { status: 'error'; message: string }
 
 export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
+  const { wallet: walletIface } = useWallet()
   const [wallet, setWallet] = useState<WalletConnection | null>(null)
   const [mintStates, setMintStates] = useState<Record<string, MintState>>({})
   const [listForm, setListForm] = useState({
@@ -122,24 +124,30 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
       setListForm((f) => ({ ...f, loading: false, error: result.error ?? 'Failed to create listing' })); return
     }
 
-    // Transfer ordinal to escrow via wallet (v3 API: transferOrdinal, singular)
-    const yours = window.yours
-    if (!yours?.transferOrdinal) {
-      setListForm((f) => ({ ...f, loading: false, error: 'Yours Wallet transferOrdinal not available — update your wallet extension' })); return
+    // Transfer ordinal to escrow via BRC-100 wallet
+    if (!walletIface) {
+      setListForm((f) => ({ ...f, loading: false, error: 'Wallet not connected — please connect your Yours Wallet' })); return
     }
 
-    // Resolve live UTXO outpoint — differs from origin if the ordinal has been transferred
-    const currentOutpoint = await resolveCurrentOutpoint(normalizedOutpoint)
+    const ctx = buildActionContext(walletIface)
+
+    // Find the ordinal's current WalletOutput in the wallet
+    let ordinalOutput
+    try {
+      const ordinalsResult = await getOrdinals.execute(ctx, {})
+      ordinalOutput = findOrdinalOutput(ordinalsResult.outputs ?? [], normalizedOutpoint)
+      if (!ordinalOutput) throw new Error(`Ordinal not found in wallet. Make sure ${normalizedOutpoint} is in your connected Yours Wallet.`)
+    } catch (err) {
+      setListForm((f) => ({ ...f, loading: false, error: err instanceof Error ? err.message : 'Could not read wallet ordinals' })); return
+    }
 
     let escrowTxid: string
     try {
-      const txid = await yours.transferOrdinal({
-        address: result.escrowAddress,
-        origin: normalizedOutpoint,
-        outpoint: currentOutpoint,
+      const txResult = await transferOrdinals.execute(ctx, {
+        transfers: [{ ordinal: ordinalOutput, address: result.escrowAddress }],
       })
-      if (!txid) throw new Error('Wallet did not return a txid')
-      escrowTxid = txid
+      if (!txResult.txid) throw new Error(txResult.error ?? 'Wallet did not return a txid')
+      escrowTxid = txResult.txid
     } catch (err) {
       setListForm((f) => ({ ...f, loading: false, error: err instanceof Error ? err.message : 'Wallet rejected the transfer' })); return
     }
@@ -333,6 +341,7 @@ export function OrdinalsClient({ mintable, listings, ownableItems }: Props) {
                 Ordinal secured in escrow — your listing is now live.
               </p>
               <button
+                type="button"
                 className="text-xs text-violet-400 hover:text-violet-300 mt-2"
                 onClick={() => setListForm((f) => ({ ...f, success: false }))}
               >
@@ -425,6 +434,7 @@ function OwnedOrdinalCard({
   bsvPrice: number | null
   onListed: () => void
 }) {
+  const { wallet: walletIface } = useWallet()
   const [priceBsv, setPriceBsv] = useState('')
   const [stage, setStage] = useState<ListStage>('idle')
   const [error, setError] = useState('')
@@ -446,24 +456,29 @@ function OwnedOrdinalCard({
 
     setStage('escrow')
 
-    // 2. Transfer ordinal to platform escrow via Yours Wallet (v3 API: transferOrdinal)
-    const yours = window.yours
-    if (!yours?.transferOrdinal) {
-      setStage('error'); setError('Yours Wallet transferOrdinal not available — update your wallet extension'); return
+    // 2. Transfer ordinal to platform escrow via BRC-100 wallet
+    if (!walletIface) {
+      setStage('error'); setError('Wallet not connected — please reconnect your Yours Wallet'); return
     }
 
-    // Resolve live UTXO outpoint — differs from origin if the ordinal has been transferred
-    const currentOutpoint = await resolveCurrentOutpoint(item.inscription_outpoint)
+    const ctx = buildActionContext(walletIface)
+
+    let ordinalOutput
+    try {
+      const ordinalsResult = await getOrdinals.execute(ctx, {})
+      ordinalOutput = findOrdinalOutput(ordinalsResult.outputs ?? [], item.inscription_outpoint)
+      if (!ordinalOutput) throw new Error(`Ordinal not found in wallet. It may have been transferred or the wallet needs to sync.`)
+    } catch (err) {
+      setStage('error'); setError(err instanceof Error ? err.message : 'Could not read wallet ordinals'); return
+    }
 
     let escrowTxid: string
     try {
-      const txid = await yours.transferOrdinal({
-        address: result.escrowAddress,
-        origin: item.inscription_outpoint,
-        outpoint: currentOutpoint,
+      const txResult = await transferOrdinals.execute(ctx, {
+        transfers: [{ ordinal: ordinalOutput, address: result.escrowAddress }],
       })
-      if (!txid) throw new Error('Wallet did not return a txid')
-      escrowTxid = txid
+      if (!txResult.txid) throw new Error(txResult.error ?? 'Wallet did not return a txid')
+      escrowTxid = txResult.txid
     } catch (err) {
       setStage('error'); setError(err instanceof Error ? err.message : 'Wallet rejected the transfer'); return
     }
@@ -685,6 +700,7 @@ function ListingCard({
   wallet: WalletConnection | null
   bsvPrice: number | null
 }) {
+  const { wallet: walletIface } = useWallet()
   const [stage, setStage] = useState<BuyStage>('idle')
   const [error, setError] = useState('')
   const [saleTxid, setSaleTxid] = useState('')
@@ -693,20 +709,20 @@ function ListingCard({
     if (!wallet) return
     setStage('paying'); setError('')
 
-    const yours = window.yours
-    if (!yours?.sendBsv) {
-      setStage('error'); setError('Yours Wallet not available — update your wallet extension'); return
+    if (!walletIface) {
+      setStage('error'); setError('Wallet not connected — please reconnect your Yours Wallet'); return
     }
+
+    const ctx = buildActionContext(walletIface)
 
     // Send price_mnee value as satoshis to seller (placeholder until MNEE token payment)
     const totalSats = Math.max(1, Math.floor(Number(listing.price_mnee)))
     let paymentTxid: string
     try {
-      // v3 API: sendBsv returns { txid, rawtx }, not a bare string
-      const result = await yours.sendBsv([
-        { address: listing.seller_ord_address, satoshis: totalSats },
-      ])
-      if (!result?.txid) throw new Error('Wallet did not return a txid')
+      const result = await sendBsv.execute(ctx, {
+        requests: [{ address: listing.seller_ord_address, satoshis: totalSats }],
+      })
+      if (!result.txid) throw new Error(result.error ?? 'Wallet did not return a txid')
       paymentTxid = result.txid
     } catch (err) {
       setStage('error'); setError(err instanceof Error ? err.message : 'Payment rejected'); return

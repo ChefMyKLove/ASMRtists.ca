@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { useWallet } from '@1sat/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -10,34 +11,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import {
-  detectAvailableWallets,
-  connectWallet,
+  buildConnectionFromWallet,
   connectManual,
   disconnectWallet,
   loadPersistedSession,
-  type WalletType,
   type WalletConnection,
 } from '@/lib/wallet/connectors'
 import { truncateAddress } from '@/lib/utils'
 import { Wallet, X, Loader2 } from 'lucide-react'
-
-const WALLET_LABELS: Record<WalletType, string> = {
-  yours: 'Yours Wallet',
-  handcash: 'HandCash',
-  relayx: 'RelayX',
-  metanet: 'Metanet (Babbage)',
-  '1sat': '1Sat Ordinals',
-  manual: 'Manual address',
-}
-
-const WALLET_ICONS: Record<WalletType, string> = {
-  yours: '🔵',
-  handcash: '✋',
-  relayx: '🔄',
-  metanet: '🔸',
-  '1sat': '🎨',
-  manual: '📋',
-}
 
 interface WalletConnectorProps {
   onConnected?: (conn: WalletConnection) => void
@@ -48,80 +29,111 @@ interface WalletConnectorProps {
 }
 
 export function WalletConnector({ onConnected, onDisconnected, forceOpen, onForceOpenHandled }: WalletConnectorProps) {
+  const { wallet: walletIface, status, connect, disconnect } = useWallet()
   const [open, setOpen] = useState(false)
-  const [connection, setConnection] = useState<WalletConnection | null>(null)
-  const [available, setAvailable] = useState<WalletType[]>([])
-  const [connecting, setConnecting] = useState<WalletType | null>(null)
+  const [conn, setConn] = useState<WalletConnection | null>(null)
+  const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const derivingRef = useRef(false)
 
+  // Load persisted manual-address session on mount (BRC-100 wallets auto-reconnect via WalletProvider)
   useEffect(() => {
     const saved = loadPersistedSession()
-    if (saved) {
-      setConnection(saved)
+    if (saved?.type === 'manual') {
+      setConn(saved)
       onConnected?.(saved)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // When BRC-100 wallet connects, derive deposit address and build WalletConnection
+  useEffect(() => {
+    if (!walletIface || derivingRef.current) return
+    derivingRef.current = true
+    buildConnectionFromWallet(walletIface, 'yours')
+      .then((c) => {
+        setConn(c)
+        onConnected?.(c)
+        setOpen(false)
+        setConnecting(false)
+        setError(null)
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : 'Failed to derive wallet address')
+        setConnecting(false)
+      })
+      .finally(() => { derivingRef.current = false })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletIface])
+
+  // When BRC-100 wallet disconnects, clear non-manual connection
+  useEffect(() => {
+    if (!walletIface) {
+      setConn((prev) => {
+        if (prev && prev.type !== 'manual') {
+          onDisconnected?.()
+          return null
+        }
+        return prev
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletIface])
+
   useEffect(() => {
     if (forceOpen) {
-      handleOpen()
+      setError(null)
+      setOpen(true)
       onForceOpenHandled?.()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [forceOpen])
 
-  async function handleOpen() {
-    setError(null)
-    setOpen(true)
-    const wallets = await detectAvailableWallets()
-    setAvailable(wallets)
-  }
-
-  async function handleConnect(type: WalletType) {
-    setConnecting(type)
+  async function handleConnect() {
+    setConnecting(true)
     setError(null)
     try {
-      const conn = await connectWallet(type)
-      setConnection(conn)
-      onConnected?.(conn)
-      setOpen(false)
+      // No providerType → auto-detects window.CWI (Yours Wallet v5, desktop wallets, etc.)
+      await connect()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed')
-    } finally {
-      setConnecting(null)
+      setConnecting(false)
     }
   }
 
   function handleDisconnect() {
+    disconnect()
     disconnectWallet()
-    setConnection(null)
+    setConn(null)
+    setError(null)
     onDisconnected?.()
   }
 
   function handleManual(address: string) {
     try {
-      const conn = connectManual(address)
-      setConnection(conn)
-      onConnected?.(conn)
+      const newConn = connectManual(address)
+      setConn(newConn)
+      onConnected?.(newConn)
       setOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid address')
     }
   }
 
-  if (connection) {
+  const isConnecting = status === 'connecting' || connecting || derivingRef.current
+
+  if (conn) {
     return (
       <div className="flex items-center gap-1">
         <Button
           variant="outline"
           size="sm"
           className="border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/5 gap-2"
-          onClick={handleOpen}
+          onClick={() => { setError(null); setOpen(true) }}
         >
           <Wallet className="h-4 w-4" />
           <span className="hidden sm:inline font-mono text-xs">
-            {truncateAddress(connection.ordAddress, 5)}
+            {truncateAddress(conn.ordAddress, 5)}
           </span>
         </Button>
         <Button
@@ -134,17 +146,15 @@ export function WalletConnector({ onConnected, onDisconnected, forceOpen, onForc
           <X className="h-3.5 w-3.5" />
         </Button>
 
-        {/* Swap wallet dialog */}
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogContent className="bg-[#0a0a0f]/95 backdrop-blur border-white/10 max-w-sm">
             <DialogHeader>
               <DialogTitle>Switch Wallet</DialogTitle>
             </DialogHeader>
-            <WalletList
-              available={available}
-              connecting={connecting}
+            <ConnectContent
+              isConnecting={isConnecting}
               error={error}
-              onSelect={handleConnect}
+              onConnect={handleConnect}
               onManual={handleManual}
             />
           </DialogContent>
@@ -159,10 +169,11 @@ export function WalletConnector({ onConnected, onDisconnected, forceOpen, onForc
         variant="outline"
         size="sm"
         className="border-white/20 hover:bg-white/5 gap-2"
-        onClick={handleOpen}
+        onClick={() => { setError(null); setOpen(true) }}
+        disabled={isConnecting}
       >
-        <Wallet className="h-4 w-4" />
-        <span className="hidden sm:inline">Connect Wallet</span>
+        {isConnecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+        <span className="hidden sm:inline">{isConnecting ? 'Connecting…' : 'Connect Wallet'}</span>
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -170,11 +181,10 @@ export function WalletConnector({ onConnected, onDisconnected, forceOpen, onForc
           <DialogHeader>
             <DialogTitle>Connect BSV Wallet</DialogTitle>
           </DialogHeader>
-          <WalletList
-            available={available}
-            connecting={connecting}
+          <ConnectContent
+            isConnecting={isConnecting}
             error={error}
-            onSelect={handleConnect}
+            onConnect={handleConnect}
             onManual={handleManual}
           />
         </DialogContent>
@@ -183,80 +193,40 @@ export function WalletConnector({ onConnected, onDisconnected, forceOpen, onForc
   )
 }
 
-function WalletList({
-  available,
-  connecting,
+function ConnectContent({
+  isConnecting,
   error,
-  onSelect,
+  onConnect,
   onManual,
 }: {
-  available: WalletType[]
-  connecting: WalletType | null
+  isConnecting: boolean
   error: string | null
-  onSelect: (type: WalletType) => void
+  onConnect: () => void
   onManual: (address: string) => void
 }) {
   const [manualAddr, setManualAddr] = useState('')
-  const detected = available.filter((w) => w !== '1sat')
-  const undetected: WalletType[] = (['yours', 'handcash', 'relayx', 'metanet'] as WalletType[]).filter(
-    (w) => !available.includes(w)
-  )
 
   return (
     <div className="space-y-3 pt-1">
-      {detected.length > 0 && (
-        <div className="space-y-2">
-          {detected.map((type) => (
-            <WalletButton
-              key={type}
-              type={type}
-              connecting={connecting}
-              onSelect={onSelect}
-            />
-          ))}
+      {/* Primary — auto-detect BRC-100 wallet (Yours Wallet v5, window.CWI) */}
+      <button
+        type="button"
+        disabled={isConnecting}
+        onClick={onConnect}
+        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
+      >
+        <span className="text-lg flex-shrink-0">🔵</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm">Yours Wallet</p>
+          <p className="text-[11px] text-muted-foreground">BRC-100 · auto-detect</p>
         </div>
-      )}
+        {isConnecting && <Loader2 className="h-4 w-4 animate-spin text-white/50 flex-shrink-0" />}
+      </button>
 
-      {detected.length === 0 && !connecting && (
-        <>
-          <p className="text-sm text-muted-foreground text-center py-1">
-            No BSV wallet extensions detected.
-          </p>
-          <a
-            href="https://yours.org"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/10 hover:bg-white/5 transition-colors"
-          >
-            <span className="text-lg">🔵</span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm">Install Yours Wallet</p>
-              <p className="text-[11px] text-muted-foreground">Recommended for BSV ordinals</p>
-            </div>
-            <span className="text-[10px] text-white/40">↗</span>
-          </a>
-        </>
-      )}
-
-      {undetected.length > 0 && detected.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[10px] uppercase tracking-widest text-white/30 px-1">Not installed</p>
-          {undetected.map((type) => (
-            <div
-              key={type}
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg opacity-40 cursor-not-allowed"
-            >
-              <span className="text-lg">{WALLET_ICONS[type]}</span>
-              <span className="text-sm">{WALLET_LABELS[type]}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* 1sat — always coming soon */}
+      {/* 1sat — coming soon */}
       <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg opacity-30 cursor-not-allowed">
-        <span className="text-lg">{WALLET_ICONS['1sat']}</span>
-        <span className="text-sm">{WALLET_LABELS['1sat']}</span>
+        <span className="text-lg">🎨</span>
+        <span className="text-sm">1Sat Ordinals</span>
         <span className="ml-auto text-[10px] text-white/40">soon</span>
       </div>
 
@@ -288,31 +258,5 @@ function WalletList({
         <p className="text-xs text-red-400 bg-red-400/10 rounded-lg px-3 py-2">{error}</p>
       )}
     </div>
-  )
-}
-
-function WalletButton({
-  type,
-  connecting,
-  onSelect,
-}: {
-  type: WalletType
-  connecting: WalletType | null
-  onSelect: (type: WalletType) => void
-}) {
-  const isConnecting = connecting === type
-  const isDisabled = connecting !== null
-
-  return (
-    <button
-      type="button"
-      disabled={isDisabled}
-      onClick={() => onSelect(type)}
-      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border border-white/10 hover:border-white/20 hover:bg-white/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-left"
-    >
-      <span className="text-lg flex-shrink-0">{WALLET_ICONS[type]}</span>
-      <span className="text-sm flex-1">{WALLET_LABELS[type]}</span>
-      {isConnecting && <Loader2 className="h-4 w-4 animate-spin text-white/50 flex-shrink-0" />}
-    </button>
   )
 }

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -27,6 +28,13 @@ export default async function AdminLayout({
     <div className="min-h-screen p-6">
       <div className="mx-auto max-w-7xl">
         <div className="mb-6 flex items-center gap-3">
+          <Link
+            href="/"
+            className="text-sm text-white/40 hover:text-white/80 transition-colors flex items-center gap-1"
+          >
+            ← Site
+          </Link>
+          <span className="text-white/20">·</span>
           <h1 className="text-xl font-bold">Admin</h1>
           <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded-full">
             Restricted

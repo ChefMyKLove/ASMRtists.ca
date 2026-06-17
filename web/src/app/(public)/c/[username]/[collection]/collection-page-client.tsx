@@ -16,6 +16,7 @@ import { ShopModal } from '@/components/shopify/shop-modal'
 import { CollectionGrid } from '@/components/collection/collection-grid'
 import { HolderClaimPanel } from '@/components/collection/holder-claim-panel'
 import { WalletConnector } from '@/components/wallet/wallet-connector'
+import { useWallet } from '@1sat/react'
 import type { WalletConnection } from '@/lib/wallet/connectors'
 import { signMessage } from '@/lib/wallet/connectors'
 import type { OwnedOrdinal, BalanceEntry } from '@/lib/bsv/ordinals'
@@ -77,6 +78,7 @@ export function CollectionPageClient({
 }: CollectionPageClientProps) {
   const { artist, artwork: artworks } = collection
 
+  const { wallet: walletIface } = useWallet()
   const [selectedArtwork, setSelectedArtwork] = useState<CollectionArtwork | null>(null)
   const [shopModalOpen, setShopModalOpen] = useState(false)
   const [shopUrl, setShopUrl] = useState('')
@@ -171,7 +173,8 @@ export function CollectionPageClient({
         return
       }
       const { nonce } = await chalRes.json() as { nonce: string }
-      const signature = await signMessage(connectedWallet.type, nonce)
+      if (!walletIface) throw new Error('Wallet not connected — please reconnect your Yours Wallet')
+      const signature = await signMessage(walletIface, nonce)
       const claimRes = await fetch('/api/ordinals/claim', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

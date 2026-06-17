@@ -10,6 +10,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { useWallet } from '@1sat/react'
 import { truncateAddress } from '@/lib/utils'
 import { signMessage, type WalletType } from '@/lib/wallet/connectors'
 import type { OwnedOrdinal, BalanceEntry } from '@/lib/bsv/ordinals'
@@ -52,6 +53,7 @@ export function HolderClaimPanel({
   balances,
   artworks,
 }: HolderClaimPanelProps) {
+  const { wallet: walletIface } = useWallet()
   const [claiming, setClaiming] = useState(false)
   const [claimResults, setClaimResults] = useState<Record<string, ClaimResult>>({})
 
@@ -96,7 +98,8 @@ export function HolderClaimPanel({
         const { nonce } = await chalRes.json() as { nonce: string }
 
         // Step 2 — sign the nonce with the connected wallet extension
-        const signature = await signMessage(walletType, nonce)
+        if (!walletIface) throw new Error('Wallet not connected — please reconnect your Yours Wallet')
+        const signature = await signMessage(walletIface, nonce)
 
         // Step 3 — submit the claim; server re-verifies ownership + sig
         const claimRes = await fetch('/api/ordinals/claim', {
