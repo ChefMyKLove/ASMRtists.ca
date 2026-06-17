@@ -9,6 +9,79 @@ import { deliverOrdinalFromEscrow, getPlatformEscrowAddress, verifyPaymentTx } f
 
 const JPEG_MAX_BYTES = 400 * 1024 // 400 KB
 
+// ─── Escrow UTXO health check ─────────────────────────────────────────────────
+
+const VERIFY_CACHE_MS = 5 * 60 * 1000 // skip re-check if verified within last 5 min
+
+/**
+ * Ask 1sat.app whether the escrow UTXO (vout 0 of the given txid) has been spent.
+ * Returns 'valid' (unspent), 'spent' (consumed), or 'unknown' (API unreachable).
+ */
+async function checkEscrowUtxo(escrowTxid: string): Promise<'valid' | 'spent' | 'unknown'> {
+  try {
+    const res = await fetch(`https://api.1sat.app/1sat/txo/${escrowTxid}.0`, {
+      next: { revalidate: 0 },
+    })
+    if (!res.ok) return 'unknown'
+    const txo = await res.json() as Record<string, unknown>
+    return txo.spend ? 'spent' : 'valid'
+  } catch {
+    return 'unknown'
+  }
+}
+
+// ─── Validate a listing's escrow UTXO ────────────────────────────────────────
+
+/**
+ * Check whether an active listing's escrow UTXO is still unspent on-chain.
+ * If the UTXO has been consumed outside the normal delivery flow, marks the
+ * listing as 'delisted_transferred' and returns { valid: false, stale: true }.
+ *
+ * Results are cached via last_verified_at — calls within 5 minutes short-circuit.
+ */
+export async function validateListingAction(
+  listingId: string,
+): Promise<{ valid: boolean; stale?: boolean; error?: string }> {
+  const admin = createAdminClient()
+
+  const { data: listing } = await admin
+    .from('ordinal_listings')
+    .select('id, escrow_txid, status, last_verified_at')
+    .eq('id', listingId)
+    .maybeSingle()
+
+  if (!listing) return { valid: false, error: 'Listing not found' }
+  if (listing.status === 'delisted_transferred') return { valid: false, stale: true }
+  if (listing.status !== 'active') return { valid: false, error: 'Listing is not active' }
+  if (!listing.escrow_txid) return { valid: true } // pending_escrow — no UTXO to check
+
+  // Short-circuit if recently verified
+  if (listing.last_verified_at) {
+    const age = Date.now() - new Date(listing.last_verified_at as string).getTime()
+    if (age < VERIFY_CACHE_MS) return { valid: true }
+  }
+
+  const utxoStatus = await checkEscrowUtxo(listing.escrow_txid as string)
+
+  if (utxoStatus === 'spent') {
+    await admin
+      .from('ordinal_listings')
+      .update({ status: 'delisted_transferred', updated_at: new Date().toISOString() })
+      .eq('id', listingId)
+      .eq('status', 'active') // guard against concurrent delists
+    return { valid: false, stale: true }
+  }
+
+  if (utxoStatus === 'valid') {
+    await admin
+      .from('ordinal_listings')
+      .update({ last_verified_at: new Date().toISOString() })
+      .eq('id', listingId)
+  }
+
+  return { valid: true } // 'unknown' = fail-open; buyer will get a clear error if delivery fails
+}
+
 /**
  * Convert an artwork's original PNG to an inscription-optimised JPEG
  * and store it in the `artwork-jpegs` Supabase Storage bucket.
@@ -320,7 +393,12 @@ export async function confirmListingEscrow(
   const admin = createAdminClient()
   const { error } = await admin
     .from('ordinal_listings')
-    .update({ escrow_txid: escrowTxid, status: 'active', updated_at: new Date().toISOString() })
+    .update({
+      escrow_txid: escrowTxid,
+      listed_outpoint: `${escrowTxid}_0`,
+      status: 'active',
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', listingId)
     .eq('status', 'pending_escrow')
 
@@ -360,6 +438,16 @@ export async function purchaseListingAction(
 
   if (!listing) return { ok: false, error: 'Listing not found or not active' }
   if (!listing.escrow_txid) return { ok: false, error: 'Ordinal has not been transferred to escrow yet' }
+
+  // Preflight: confirm the escrow UTXO is still unspent before the buyer signs anything
+  const escrowCheck = await checkEscrowUtxo(listing.escrow_txid as string)
+  if (escrowCheck === 'spent') {
+    await admin
+      .from('ordinal_listings')
+      .update({ status: 'delisted_transferred', updated_at: new Date().toISOString() })
+      .eq('id', listingId)
+    return { ok: false, error: 'This listing is no longer available — the ordinal has moved from escrow. The listing has been removed.' }
+  }
 
   // Verify payment: at least 70% of price_mnee in satoshis went to seller
   const sellerSats = Math.floor(Number(listing.price_mnee) * 0.70)

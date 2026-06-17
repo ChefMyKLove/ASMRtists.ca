@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useWallet } from '@1sat/react'
 import { getOrdinals, transferOrdinals, sendBsv } from '@1sat/actions'
-import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction, cancelListingAction } from '@/app/actions/ordinals'
+import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction, cancelListingAction, validateListingAction } from '@/app/actions/ordinals'
 import { buildActionContext, findOrdinalOutput, type WalletConnection } from '@/lib/wallet/connectors'
 import type { MintableItem, ListingItem, OwnableItem } from './page'
 import {
@@ -704,6 +704,15 @@ function ListingCard({
   const [stage, setStage] = useState<BuyStage>('idle')
   const [error, setError] = useState('')
   const [saleTxid, setSaleTxid] = useState('')
+  const [isStale, setIsStale] = useState(false)
+
+  // Silently validate the escrow UTXO on mount — marks listing stale if it has moved
+  useEffect(() => {
+    validateListingAction(listing.id).then((result) => {
+      if (!result.valid && result.stale) setIsStale(true)
+    }).catch(() => {})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing.id])
 
   async function handleBuy() {
     if (!wallet) return
@@ -751,7 +760,7 @@ function ListingCard({
   }
 
   return (
-    <div className="glass rounded-xl overflow-hidden flex flex-col">
+    <div className={`glass rounded-xl overflow-hidden flex flex-col${isStale ? ' opacity-50' : ''}`}>
       <div className="aspect-square bg-white/5 relative overflow-hidden">
         {listing.artwork.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -812,6 +821,11 @@ function ListingCard({
                   {saleTxid.slice(0, 10)}…
                 </a>
               )}
+            </div>
+          ) : isStale ? (
+            <div className="flex items-center gap-1.5 text-amber-400/60 text-xs">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span>Listing unavailable — ordinal has moved</span>
             </div>
           ) : !wallet ? (
             <WalletConnector />
