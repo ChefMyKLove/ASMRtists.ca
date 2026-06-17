@@ -402,12 +402,28 @@ export async function adminApproveCollectionAction(
   if ('error' in auth) return { error: auth.error }
 
   const admin = createAdminClient()
+
+  // Fetch collection to get artist_id before updating
+  const { data: collection } = await admin
+    .from('collections')
+    .select('artist_id')
+    .eq('id', collectionId)
+    .single()
+
   const { error } = await admin
     .from('collections')
     .update({ status: 'active' })
     .eq('id', collectionId)
 
   if (error) return { error: error.message }
+
+  // Activate the artist profile so they appear in browse
+  if (collection?.artist_id) {
+    await admin
+      .from('artist_profiles')
+      .update({ status: 'active' })
+      .eq('id', collection.artist_id)
+  }
 
   // Fire pipeline for all uploaded artworks
   const { data: artworks } = await admin

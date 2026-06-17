@@ -1,4 +1,7 @@
 import type { Metadata } from 'next'
+
+export const revalidate = 300
+
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
 import { MapPin } from 'lucide-react'

@@ -1,4 +1,7 @@
 import type { Metadata } from 'next'
+
+export const revalidate = 300
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { BrowseClient } from './browse-client'
 
@@ -57,9 +60,9 @@ export default async function BrowsePage() {
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight mb-2">Browse Artists</h1>
+        <h1 className="text-3xl font-bold tracking-tight mb-2">Browse</h1>
         <p className="text-muted-foreground">
-          Discover independent artists and their original work.
+          Discover independent artists and their collections.
         </p>
       </div>
       <BrowseClient artists={artists} />

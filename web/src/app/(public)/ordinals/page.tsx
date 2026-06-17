@@ -1,4 +1,7 @@
 import type { Metadata } from 'next'
+
+export const revalidate = 300
+
 import { createAdminClient } from '@/lib/supabase/admin'
 import { OrdinalsClient } from './ordinals-client'
 

@@ -1,4 +1,7 @@
 import type { Metadata } from 'next'
+
+export const revalidate = 3600
+
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
