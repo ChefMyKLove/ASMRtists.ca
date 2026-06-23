@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Upload, AlertTriangle, Wallet } from 'lucide-react'
+import { Upload, AlertTriangle, Wallet, Mail, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
@@ -59,6 +59,7 @@ export default function RegisterArtistPage() {
   const [savingWallet, setSavingWallet] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [emailPending, setEmailPending] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   const accountForm = useForm<AccountValues>({
@@ -97,6 +98,7 @@ export default function RegisterArtistPage() {
       email: values.email,
       password: values.password,
       options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
           username: values.username,
           display_name: values.displayName,
@@ -110,12 +112,12 @@ export default function RegisterArtistPage() {
       return
     }
 
-    if (!data.user) {
-      setServerError('Account created — check your email to confirm before continuing.')
+    if (!data.session) {
+      setEmailPending(true)
       return
     }
 
-    setRegisteredUserId(data.user.id)
+    setRegisteredUserId(data.user!.id)
     setStep(2)
   }
 
@@ -211,7 +213,26 @@ export default function RegisterArtistPage() {
         </CardHeader>
         <CardContent>
           {/* Step 1: Account */}
-          {step === 1 && (
+          {step === 1 && emailPending && (
+            <div className="text-center space-y-4 py-4">
+              <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center mx-auto">
+                <Mail className="h-7 w-7 text-white/60" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-semibold">Check your inbox</h3>
+                <p className="text-sm text-muted-foreground">
+                  We sent a confirmation link to{' '}
+                  <strong className="text-white">{accountForm.getValues('email')}</strong>.
+                  Click it to activate your account.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Once confirmed, log in to complete your artist profile.
+              </p>
+            </div>
+          )}
+
+          {step === 1 && !emailPending && (
             <form
               onSubmit={accountForm.handleSubmit(onAccountSubmit)}
               className="space-y-4"
@@ -339,6 +360,7 @@ export default function RegisterArtistPage() {
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   className="hidden"
+                  aria-label="Upload profile photo"
                   onChange={handleAvatarChange}
                 />
               </div>

@@ -36,6 +36,44 @@ export async function createArtistProfile(
   return { error: null }
 }
 
+export async function addCuratorRole(
+  userId: string,
+  orgName: string,
+  bio: string | null,
+  website: string | null,
+  tier: string,
+) {
+  const supabase = createAdminClient()
+
+  const { error: profileError } = await supabase
+    .from('curator_profiles')
+    .upsert(
+      { user_id: userId, org_name: orgName, bio, website, tier },
+      { onConflict: 'user_id' }
+    )
+
+  if (profileError) return { error: profileError.message }
+
+  const { error: roleError } = await supabase
+    .from('user_roles')
+    .upsert({ user_id: userId, role: 'curator', status: 'active' }, { onConflict: 'user_id,role' })
+
+  if (roleError) return { error: roleError.message }
+
+  return { error: null }
+}
+
+export async function addCollectorRole(userId: string) {
+  const supabase = createAdminClient()
+
+  const { error } = await supabase
+    .from('user_roles')
+    .upsert({ user_id: userId, role: 'collector', status: 'active' }, { onConflict: 'user_id,role' })
+
+  if (error) return { error: error.message }
+  return { error: null }
+}
+
 export async function saveWalletAddress(
   userId: string,
   address: string,

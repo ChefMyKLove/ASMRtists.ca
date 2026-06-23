@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Eye, EyeOff, Check, AlertTriangle } from 'lucide-react'
+import { Eye, EyeOff, Check, AlertTriangle, Wallet, SkipForward, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
@@ -45,31 +45,44 @@ type CuratorProfileValues = z.infer<typeof curatorProfileSchema>
 
 const TIERS = [
   {
+    id: 'free',
+    name: 'Explorer',
+    price: 0,
+    collections: 1,
+    revenueShare: 0,
+    galleries: 0,
+    popular: false,
+    badge: 'Start free',
+  },
+  {
     id: 'emerging',
     name: 'Emerging',
     price: 29,
-    artists: 5,
     collections: 2,
     revenueShare: 5,
+    galleries: 1,
     popular: false,
+    badge: null,
   },
   {
     id: 'gallery',
     name: 'Gallery',
     price: 99,
-    artists: 20,
     collections: 5,
     revenueShare: 8,
+    galleries: 3,
     popular: true,
+    badge: null,
   },
   {
     id: 'institution',
     name: 'Institution',
     price: 299,
-    artists: 100,
     collections: 20,
     revenueShare: 10,
+    galleries: -1,
     popular: false,
+    badge: null,
   },
 ]
 
@@ -78,12 +91,15 @@ const STEPS = ['Account', 'Profile', 'Choose Tier', 'BSV Wallet']
 export default function RegisterCuratorPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
-  const [selectedTier, setSelectedTier] = useState<string>('gallery')
+  const [selectedTier, setSelectedTier] = useState<string>('free')
+  const [pendingAccount, setPendingAccount] = useState<AccountValues | null>(null)
   const [wallet, setWallet] = useState<WalletResult | null>(null)
   const [seedVisible, setSeedVisible] = useState(false)
   const [seedConfirmed, setSeedConfirmed] = useState(false)
   const [savingWallet, setSavingWallet] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [tierLoading, setTierLoading] = useState(false)
+  const [emailPending, setEmailPending] = useState(false)
 
   const accountForm = useForm<AccountValues>({
     resolver: zodResolver(accountSchema),
@@ -114,32 +130,46 @@ export default function RegisterCuratorPage() {
     accountForm.setValue('username', sanitized, { shouldValidate: true })
   }
 
-  async function onAccountSubmit(values: AccountValues) {
-    setServerError(null)
-    const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
-      email: values.email,
-      password: values.password,
-      options: {
-        data: {
-          username: values.username,
-          display_name: values.displayName,
-          role: 'curator',
-          curator_tier: selectedTier,
-        },
-      },
-    })
-
-    if (error) {
-      setServerError(error.message)
-      return
-    }
-
+  function onAccountSubmit(values: AccountValues) {
+    setPendingAccount(values)
     setStep(2)
   }
 
   function onProfileSubmit() {
     setStep(3)
+  }
+
+  async function handleTierContinue() {
+    if (!pendingAccount) return
+    setServerError(null)
+    setTierLoading(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase.auth.signUp({
+        email: pendingAccount.email,
+        password: pendingAccount.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            username: pendingAccount.username,
+            display_name: pendingAccount.displayName,
+            role: 'curator',
+            curator_tier: selectedTier,
+          },
+        },
+      })
+      if (error) {
+        setServerError(error.message)
+        return
+      }
+      if (!data.session) {
+        setEmailPending(true)
+        return
+      }
+      setStep(4)
+    } finally {
+      setTierLoading(false)
+    }
   }
 
   function handleGenerateWallet() {
@@ -169,6 +199,13 @@ export default function RegisterCuratorPage() {
     }
   }
 
+  function handleSkip() {
+    router.push('/dashboard')
+    router.refresh()
+  }
+
+  const activeTier = TIERS.find((t) => t.id === selectedTier)
+  const isFreeTier = selectedTier === 'free'
   const words = wallet ? wallet.mnemonic.split(' ') : []
 
   return (
@@ -267,7 +304,7 @@ export default function RegisterCuratorPage() {
                 className="w-full"
                 disabled={accountForm.formState.isSubmitting}
               >
-                {accountForm.formState.isSubmitting ? 'Creating account...' : 'Continue'}
+                {accountForm.formState.isSubmitting ? 'Validating...' : 'Continue'}
               </Button>
             </form>
           )}
@@ -319,10 +356,30 @@ export default function RegisterCuratorPage() {
             </form>
           )}
 
+          {/* Email confirmation pending */}
+          {emailPending && (
+            <div className="text-center space-y-4 py-4">
+              <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center mx-auto">
+                <Mail className="h-7 w-7 text-white/60" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-semibold">Check your inbox</h3>
+                <p className="text-sm text-muted-foreground">
+                  We sent a confirmation link to{' '}
+                  <strong className="text-white">{pendingAccount?.email}</strong>.
+                  Click it to activate your account.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Once confirmed, log in to complete your curator setup.
+              </p>
+            </div>
+          )}
+
           {/* Step 3: Choose Tier */}
-          {step === 3 && (
+          {step === 3 && !emailPending && (
             <div className="space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 {TIERS.map((tier) => (
                   <button
                     key={tier.id}
@@ -340,6 +397,11 @@ export default function RegisterCuratorPage() {
                         Most Popular
                       </span>
                     )}
+                    {tier.badge && !tier.popular && (
+                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-white/70 whitespace-nowrap">
+                        {tier.badge}
+                      </span>
+                    )}
                     {selectedTier === tier.id && (
                       <div className="absolute top-3 right-3">
                         <Check className="h-4 w-4 text-purple-400" />
@@ -347,29 +409,54 @@ export default function RegisterCuratorPage() {
                     )}
                     <p className="font-semibold text-sm">{tier.name}</p>
                     <p className="text-2xl font-bold mt-1">
-                      <span className="rainbow-text">${tier.price}</span>
-                      <span className="text-xs text-muted-foreground font-normal">/mo</span>
+                      {tier.price === 0 ? (
+                        <span className="text-white">Free</span>
+                      ) : (
+                        <>
+                          <span className="rainbow-text">${tier.price}</span>
+                          <span className="text-xs text-muted-foreground font-normal">/mo</span>
+                        </>
+                      )}
                     </p>
                     <ul className="mt-3 space-y-1.5">
                       <li className="text-xs text-muted-foreground">
-                        Up to {tier.artists} artists
+                        {tier.collections} collection{tier.collections !== 1 ? 's' : ''}
                       </li>
                       <li className="text-xs text-muted-foreground">
-                        {tier.collections} collections
+                        {tier.revenueShare > 0
+                          ? `${tier.revenueShare}% revenue share`
+                          : 'No revenue share'}
                       </li>
                       <li className="text-xs text-muted-foreground">
-                        {tier.revenueShare}% revenue share
+                        {tier.galleries === 0
+                          ? 'No gallery pages'
+                          : tier.galleries === -1
+                          ? 'Unlimited gallery pages'
+                          : `${tier.galleries} gallery page${tier.galleries !== 1 ? 's' : ''}`}
                       </li>
                     </ul>
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Payment collected after your account is approved.
-              </p>
-              <Button onClick={() => setStep(4)} className="w-full">
-                Continue with{' '}
-                {TIERS.find((t) => t.id === selectedTier)?.name} plan
+
+              {!isFreeTier && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Payment collected after your account is approved.
+                </p>
+              )}
+
+              {serverError && (
+                <p className="text-xs text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">
+                  {serverError}
+                </p>
+              )}
+
+              <Button onClick={handleTierContinue} className="w-full" disabled={tierLoading}>
+                {tierLoading
+                  ? 'Creating account...'
+                  : isFreeTier
+                  ? 'Continue for free'
+                  : `Continue with ${activeTier?.name} plan`}
               </Button>
             </div>
           )}
@@ -377,24 +464,59 @@ export default function RegisterCuratorPage() {
           {/* Step 4: BSV Wallet */}
           {step === 4 && (
             <div className="space-y-5">
-              <div className="glass rounded-xl p-4 space-y-2 border border-amber-400/20">
-                <div className="flex items-center gap-2 text-amber-400">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-                  <h3 className="font-medium text-sm">BSV Wallet Required</h3>
+              <div
+                className={cn(
+                  'glass rounded-xl p-4 space-y-2 border',
+                  isFreeTier ? 'border-white/10' : 'border-amber-400/20'
+                )}
+              >
+                <div
+                  className={cn(
+                    'flex items-center gap-2',
+                    isFreeTier ? 'text-white' : 'text-amber-400'
+                  )}
+                >
+                  {!isFreeTier && <AlertTriangle className="h-4 w-4 flex-shrink-0" />}
+                  <h3 className="font-medium text-sm">
+                    {isFreeTier ? 'Optional: BSV Wallet' : 'BSV Wallet Required'}
+                  </h3>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Your revenue share payments are sent directly to your BSV address.{' '}
-                  <strong className="text-white">
-                    We never see your seed phrase or private key.
-                  </strong>{' '}
-                  If you lose them, no one can recover your funds.
+                  {isFreeTier ? (
+                    'Add a wallet now to be ready to earn when you upgrade to a paid tier. You can skip this and add one from your profile later.'
+                  ) : (
+                    <>
+                      Revenue share is paid directly to your BSV address.{' '}
+                      <strong className="text-white">
+                        We never see your seed phrase or private key.
+                      </strong>{' '}
+                      If you lose them, no one can recover your funds.
+                    </>
+                  )}
                 </p>
               </div>
 
               {!wallet ? (
-                <Button onClick={handleGenerateWallet} className="w-full">
-                  Generate my BSV wallet
-                </Button>
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleGenerateWallet}
+                    className="w-full"
+                    variant={isFreeTier ? 'outline' : 'default'}
+                  >
+                    <Wallet className="h-4 w-4 mr-2" />
+                    Generate my BSV wallet
+                  </Button>
+                  {isFreeTier && (
+                    <Button
+                      onClick={handleSkip}
+                      variant="ghost"
+                      className="w-full text-muted-foreground"
+                    >
+                      <SkipForward className="h-4 w-4 mr-2" />
+                      Skip for now
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -462,7 +584,10 @@ export default function RegisterCuratorPage() {
                     />
                     <span className="text-xs text-muted-foreground">
                       I have saved my seed phrase in a safe place. I understand that{' '}
-                      <strong className="text-white">if I lose it, no one can recover my funds</strong>.
+                      <strong className="text-white">
+                        if I lose it, no one can recover my funds
+                      </strong>
+                      .
                     </span>
                   </label>
 
@@ -472,13 +597,28 @@ export default function RegisterCuratorPage() {
                     </p>
                   )}
 
-                  <Button
-                    onClick={handleSaveWallet}
-                    className="w-full"
-                    disabled={!seedConfirmed || savingWallet}
-                  >
-                    {savingWallet ? 'Saving...' : 'Submit application'}
-                  </Button>
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={handleSaveWallet}
+                      className="flex-1"
+                      disabled={!seedConfirmed || savingWallet}
+                    >
+                      {savingWallet
+                        ? 'Saving...'
+                        : isFreeTier
+                        ? 'Save wallet & continue'
+                        : 'Submit application'}
+                    </Button>
+                    {isFreeTier && (
+                      <Button
+                        onClick={handleSkip}
+                        variant="ghost"
+                        className="text-muted-foreground"
+                      >
+                        Skip
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

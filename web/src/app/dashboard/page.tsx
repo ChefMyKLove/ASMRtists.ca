@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { DollarSign, Package, Gem, TrendingUp, Images, Users, Star, Clock } from 'lucide-react'
+import { DollarSign, Package, Gem, TrendingUp, Images, Users, Star, Clock, PlusCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { buttonVariants } from '@/components/ui/button'
 import Link from 'next/link'
@@ -177,6 +177,62 @@ function CuratorView() {
   )
 }
 
+const ROLE_CARDS = [
+  {
+    role: 'collector',
+    label: 'Collector',
+    emoji: '🖼️',
+    description: 'Browse art, hold BSV originals, and earn MNEE rewards on purchases.',
+    href: '/dashboard/add-role/collector',
+  },
+  {
+    role: 'artist',
+    label: 'Artist',
+    emoji: '🎨',
+    description: 'Upload work, sell prints, mint 1Sat Ordinals, and earn via Stripe + MNEE.',
+    href: '/dashboard/add-role/artist',
+  },
+  {
+    role: 'curator',
+    label: 'Curator',
+    emoji: '✨',
+    description: 'Build themed galleries, sponsor artists, and earn revenue share.',
+    href: '/dashboard/add-role/curator',
+  },
+]
+
+function ExpandSection({ heldRoles }: { heldRoles: Set<string> }) {
+  const available = ROLE_CARDS.filter((c) => !heldRoles.has(c.role))
+  if (available.length === 0) return null
+
+  return (
+    <div className="glass rounded-xl p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <PlusCircle className="h-4 w-4 text-muted-foreground" />
+        <h2 className="font-semibold text-sm">Expand Your Presence</h2>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {available.map((card) => (
+          <Link
+            key={card.role}
+            href={card.href}
+            className="group block rounded-xl border border-white/10 glass hover:border-white/25 p-4 transition-all"
+          >
+            <span className="text-xl">{card.emoji}</span>
+            <p className="font-semibold text-sm mt-2">{card.label}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              {card.description}
+            </p>
+            <p className="text-xs text-white/50 group-hover:text-white/80 mt-3 transition-colors">
+              Get started →
+            </p>
+          </Link>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const {
@@ -184,14 +240,14 @@ export default async function DashboardPage() {
   } = await supabase.auth.getUser()
 
   const admin = createAdminClient()
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('display_name, active_role')
-    .eq('id', user!.id)
-    .single()
+  const [{ data: profile }, { data: userRoles }] = await Promise.all([
+    admin.from('profiles').select('display_name, active_role').eq('id', user!.id).single(),
+    admin.from('user_roles').select('role').eq('user_id', user!.id),
+  ])
 
   const displayName = profile?.display_name ?? user?.email ?? 'there'
   const role = (profile?.active_role ?? 'collector') as Role
+  const heldRoles = new Set((userRoles ?? []).map((r) => r.role as string))
 
   return (
     <div className="space-y-8">
@@ -205,6 +261,8 @@ export default async function DashboardPage() {
       {role === 'collector' && <CollectorView />}
       {(role === 'artist' || role === 'admin') && <ArtistView />}
       {role === 'curator' && <CuratorView />}
+
+      <ExpandSection heldRoles={heldRoles} />
     </div>
   )
 }

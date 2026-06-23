@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Eye, EyeOff, Wallet, SkipForward } from 'lucide-react'
+import { Eye, EyeOff, Wallet, SkipForward, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { PasswordInput } from '@/components/ui/password-input'
@@ -45,6 +45,7 @@ export default function RegisterCollectorPage() {
   const [seedConfirmed, setSeedConfirmed] = useState(false)
   const [savingWallet, setSavingWallet] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
+  const [emailPending, setEmailPending] = useState(false)
 
   const {
     register,
@@ -79,10 +80,11 @@ export default function RegisterCollectorPage() {
   async function onAccountSubmit(values: AccountValues) {
     setServerError(null)
     const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email: values.email,
       password: values.password,
       options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
           username: values.username,
           display_name: values.displayName,
@@ -93,6 +95,11 @@ export default function RegisterCollectorPage() {
 
     if (error) {
       setServerError(error.message)
+      return
+    }
+
+    if (!data.session) {
+      setEmailPending(true)
       return
     }
 
@@ -143,7 +150,26 @@ export default function RegisterCollectorPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {step === 1 && (
+          {step === 1 && emailPending && (
+            <div className="text-center space-y-4 py-4">
+              <div className="h-14 w-14 rounded-full bg-white/10 flex items-center justify-center mx-auto">
+                <Mail className="h-7 w-7 text-white/60" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-semibold">Check your inbox</h3>
+                <p className="text-sm text-muted-foreground">
+                  We sent a confirmation link to{' '}
+                  <strong className="text-white">{watch('email')}</strong>.
+                  Click it to activate your account.
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Once confirmed, log in to set up your wallet and start collecting.
+              </p>
+            </div>
+          )}
+
+          {step === 1 && !emailPending && (
             <form onSubmit={handleSubmit(onAccountSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
