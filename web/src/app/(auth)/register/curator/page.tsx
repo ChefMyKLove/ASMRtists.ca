@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Eye, EyeOff, Check, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { MultiStepForm } from '@/components/auth/multi-step-form'
@@ -86,6 +87,7 @@ export default function RegisterCuratorPage() {
 
   const accountForm = useForm<AccountValues>({
     resolver: zodResolver(accountSchema),
+    mode: 'onChange',
     defaultValues: { username: '', displayName: '', email: '', password: '', confirmPassword: '' },
   })
 
@@ -103,8 +105,13 @@ export default function RegisterCuratorPage() {
         .toLowerCase()
         .replace(/[^a-z0-9_-]/g, '-')
         .slice(0, 32)
-      accountForm.setValue('username', suggested)
+      accountForm.setValue('username', suggested, { shouldValidate: true })
     }
+  }
+
+  function handleUsernameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 32)
+    accountForm.setValue('username', sanitized, { shouldValidate: true })
   }
 
   async function onAccountSubmit(values: AccountValues) {
@@ -216,7 +223,7 @@ export default function RegisterCuratorPage() {
                   placeholder="your-username"
                   autoComplete="username"
                   className="bg-white/5 border-white/10"
-                  {...accountForm.register('username')}
+                  {...accountForm.register('username', { onBlur: handleUsernameBlur })}
                 />
                 {accountForm.formState.errors.username && (
                   <p className="text-xs text-red-400">{accountForm.formState.errors.username.message}</p>
@@ -225,9 +232,8 @@ export default function RegisterCuratorPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   autoComplete="new-password"
                   className="bg-white/5 border-white/10"
                   {...accountForm.register('password')}
@@ -239,9 +245,8 @@ export default function RegisterCuratorPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
+                <PasswordInput
                   id="confirmPassword"
-                  type="password"
                   autoComplete="new-password"
                   className="bg-white/5 border-white/10"
                   {...accountForm.register('confirmPassword')}

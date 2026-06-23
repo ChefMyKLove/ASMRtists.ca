@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Eye, EyeOff, Wallet, SkipForward } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { PasswordInput } from '@/components/ui/password-input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { MultiStepForm } from '@/components/auth/multi-step-form'
@@ -53,10 +54,10 @@ export default function RegisterCollectorPage() {
     formState: { errors, isSubmitting },
   } = useForm<AccountValues>({
     resolver: zodResolver(accountSchema),
+    mode: 'onChange',
     defaultValues: { username: '', displayName: '', email: '', password: '', confirmPassword: '' },
   })
 
-  // Auto-suggest username from email
   function handleEmailBlur(e: React.FocusEvent<HTMLInputElement>) {
     const emailVal = e.target.value
     const username = watch('username')
@@ -66,8 +67,13 @@ export default function RegisterCollectorPage() {
         .toLowerCase()
         .replace(/[^a-z0-9_-]/g, '-')
         .slice(0, 32)
-      setValue('username', suggested)
+      setValue('username', suggested, { shouldValidate: true })
     }
+  }
+
+  function handleUsernameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const sanitized = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 32)
+    setValue('username', sanitized, { shouldValidate: true })
   }
 
   async function onAccountSubmit(values: AccountValues) {
@@ -173,7 +179,7 @@ export default function RegisterCollectorPage() {
                   placeholder="your-username"
                   autoComplete="username"
                   className="bg-white/5 border-white/10"
-                  {...register('username')}
+                  {...register('username', { onBlur: handleUsernameBlur })}
                 />
                 {errors.username && (
                   <p className="text-xs text-red-400">{errors.username.message}</p>
@@ -182,9 +188,8 @@ export default function RegisterCollectorPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
                   autoComplete="new-password"
                   className="bg-white/5 border-white/10"
                   {...register('password')}
@@ -196,9 +201,8 @@ export default function RegisterCollectorPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
+                <PasswordInput
                   id="confirmPassword"
-                  type="password"
                   autoComplete="new-password"
                   className="bg-white/5 border-white/10"
                   {...register('confirmPassword')}
