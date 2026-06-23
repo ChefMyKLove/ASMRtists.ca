@@ -48,8 +48,8 @@ JPEG_MAX_BYTES = int(os.getenv("JPEG_MAX_BYTES", str(400 * 1024)))  # 400 kb def
 #  POST /api/mint/inscribe with the artwork ID to complete inscription.
 # ──────────────────────────────────────────────
 
-MINT_ENDPOINT = os.getenv("MINT_ENDPOINT", "<<PLACEHOLDER: e.g. https://asmrtists.ca/api/mint/inscribe>>")
-CRON_SECRET   = os.getenv("CRON_SECRET",   "<<PLACEHOLDER: same value as CRON_SECRET in .env.local>>")
+MINT_ENDPOINT = os.getenv("MINT_ENDPOINT", "<<PLACEHOLDER: e.g. https://asmrtists.ca/api/pipeline/process>>")
+PIPELINE_SECRET = os.getenv("PIPELINE_WEBHOOK_SECRET", "<<PLACEHOLDER: same value as PIPELINE_WEBHOOK_SECRET in .env.local>>")
 
 # ──────────────────────────────────────────────
 #  SUPABASE HELPERS
@@ -200,28 +200,28 @@ def trigger_in_house_minter(artwork):
     """
     Trigger the in-house BSV minter via the Next.js API route.
 
-    POST /api/mint/inscribe
+    POST /api/pipeline/process
       { artworkId: "<uuid>" }
-      Header: x-cron-secret: <CRON_SECRET>
+      Header: x-pipeline-secret: <PIPELINE_WEBHOOK_SECRET>
 
-    The route downloads the JPEG from Supabase Storage, builds the
-    1Sat Ordinals inscription script via @bsv/sdk, signs, and broadcasts.
-    Returns: { txid, outpoint } on success.
+    The route downloads the image from Supabase Storage, runs Printify if not
+    already done, then builds the 1Sat Ordinals inscription via @bsv/sdk, signs,
+    and broadcasts. Returns: { artworkId, bsv, printify, errors } on completion.
 
     If MINT_ENDPOINT is not configured, logs the artwork ID and returns None —
     the API route can be triggered manually or via Vercel cron instead.
     """
     artwork_id = artwork["id"]
 
-    if "PLACEHOLDER" in MINT_ENDPOINT or "PLACEHOLDER" in CRON_SECRET:
+    if "PLACEHOLDER" in MINT_ENDPOINT or "PLACEHOLDER" in PIPELINE_SECRET:
         print(f"  ⏸  Mint endpoint not configured — JPEG is ready in Supabase Storage.")
-        print(f"     Trigger manually: POST {MINT_ENDPOINT} with artworkId={artwork_id}")
+        print(f"     Trigger manually: POST /api/pipeline/process with artworkId={artwork_id}")
         return {"txid": None, "outpoint": None}
 
     r = requests.post(
         MINT_ENDPOINT,
         headers={
-            "x-cron-secret": CRON_SECRET,
+            "x-pipeline-secret": PIPELINE_SECRET,
             "Content-Type": "application/json",
         },
         json={"artworkId": artwork_id},

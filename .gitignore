@@ -54,3 +54,6 @@ ordinalrainbows/
 
 # Bun
 bun.lockb
+
+# Generated wallet files — contain private keys, never commit
+wallet-import.json

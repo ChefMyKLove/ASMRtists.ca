@@ -23,8 +23,7 @@ Three user types, three portals: artists who publish, collectors who buy prints 
 ```
 ASMRtists.ca/
 ├── web/        # Next.js 16 app — main platform (ASMRtists.ca)
-├── shop/       # Cloudflare Worker — Shopify storefront proxy (ASMRprints.com)
-└── scripts/    # Python utilities — Printify pipeline, ordinal prep, Shopify sync
+└── scripts/    # Python utilities — one-time data migration and backfill tools
 ```
 
 ---
@@ -33,7 +32,7 @@ ASMRtists.ca/
 
 **Live / In Active Development**
 - Artist registration, profile management, and collection upload (up to 64 JPEGs per collection)
-- Simultaneous publish to Shopify storefront and BSV ordinals minting on collection submission
+- Simultaneous publish to Shopify storefront and BSV ordinals minting on collection approval
 - Proprietary in-house ordinal minting pipeline (fully built, in active testing)
 - Automated Printify fulfillment — canvas print, art print, photo print per artwork
 - Shopify storefront sync with tag-based per-artist collections
@@ -60,7 +59,7 @@ ASMRtists.ca/
 - Node.js 18+
 - A Supabase project (PostgreSQL)
 - A Vercel account (for deployment)
-- API keys: Printify, Shopify, TAAL
+- API keys: Printify, Shopify
 
 ### Local Setup
 
@@ -82,12 +81,22 @@ Required variables:
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-PRINTIFY_API_KEY=
+PRINTIFY_API_TOKEN=
+PRINTIFY_BLUEPRINT_ID=
+PRINTIFY_PRINT_PROVIDER_ID=
 SHOPIFY_STORE_URL=
 SHOPIFY_ACCESS_TOKEN=
-TAAL_API_KEY=
 SHOPIFY_WEBHOOK_SECRET=
+PLATFORM_FUNDING_WIF=
+PIPELINE_WEBHOOK_SECRET=
 MNEE_API_KEY=
+```
+
+Optional:
+
+```
+TAAL_API_KEY=        # TAAL ARC broadcaster for BSV payouts (falls back to mainnet default)
+NEXT_PUBLIC_SITE_URL=
 ```
 
 Run the development server:
@@ -105,17 +114,17 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Artist Flow
 1. Register at `/register` and complete your artist profile
 2. Upload a collection of JPEGs (max 64) via the Artist Portal
-3. Platform automatically publishes to Shopify storefront and mints BSV ordinals — one per artwork
-4. Collectors can mint available ordinals; print sales generate rewards for holders
+3. A curator approves the collection — the platform automatically publishes to Shopify and mints BSV ordinals (one per artwork)
+4. Collectors can buy prints or hold ordinals; print sales generate rewards for holders
 
 ### Collector Flow
 1. Browse the gallery at the platform homepage
 2. Buy prints directly — no wallet required
-3. Or: connect via Yours Wallet (or generate a new BSV wallet on signup) to mint and hold ordinals
+3. Or: connect via Yours Wallet to mint and hold ordinals
 4. Accumulate rewards as the artist's prints sell; hold, sell, or use ordinals in external projects
 
 ### Curator Flow
-1. Sign up and choose a tier (free / pro / enterprise)
+1. Sign up and complete a curator profile
 2. Build themed portals across multiple artists' collections
 3. Participate in the content vetting council to review and approve incoming artist submissions
 
@@ -130,31 +139,44 @@ Open [http://localhost:3000](http://localhost:3000).
 
 | Layer | Technology |
 |---|---|
-| Frontend | Next.js 16 (App Router), TypeScript, React, Tailwind CSS, shadcn/ui |
-| Backend / API | Next.js API routes, Node.js |
-| Database | Supabase (PostgreSQL), Row Level Security |
-| Authentication | Supabase Auth + BSV wallet login (Yours Wallet / generated wallet) |
+| Framework | Next.js 16.2.4 (App Router, Turbopack) |
+| Language | TypeScript 5 |
+| UI | React 19, Tailwind CSS v4, shadcn/ui, Base UI, Lucide React, Sonner |
+| Forms & Validation | react-hook-form, Zod |
+| Data Fetching | TanStack React Query v5 |
+| Database | Supabase (PostgreSQL + Row Level Security) |
+| Auth | Supabase Auth + BSV wallet login via @1sat/connect (Yours Wallet) |
+| BSV SDK | @bsv/sdk v2, @1sat/actions, @1sat/client, @1sat/react |
+| Minting Broadcaster | WhatsOnChainBroadcaster (inscriptions), TAAL ARC (payouts, optional) |
 | Fulfillment | Printify API |
 | Storefront | Shopify API |
-| Blockchain | BSV 1Sat Ordinals, `@bsv/sdk`, TAAL ARC, WhatsOnChain |
-| Minting | Proprietary in-house minting pipeline |
-| Payouts | MNEE stablecoin |
-| Scripting | Python (Printify pipeline, ordinal prep, Shopify sync) |
-| Hosting | Vercel (CI/CD), Supabase Pro |
+| Payments / Payouts | MNEE stablecoin (@mnee/ts-sdk), Stripe |
+| Hosting | Vercel (CI/CD + serverless runtime) |
+| Migration tooling | Python (one-time data import and Shopify backfill scripts) |
 | Version Control | GitHub |
 
 ---
 
-## Future Improvements
+## Next Steps
 
+### Immediate
+- Fund the platform BSV wallet and complete end-to-end minting test
+- Connect artist BSV wallet addresses via Yours Wallet on signup
+- Deploy `PLATFORM_FUNDING_WIF` and `PIPELINE_WEBHOOK_SECRET` to Vercel
+
+### Near-term
 - Collector and artist leaderboards with gamification layer
 - Referral system and social features on artist portfolio pages
-- Discord community gating bot (partially built; Fly.io deployment pending)
+- Mobile optimization across all portals
+
+### Infrastructure
+- ASMRprints.com storefront — Cloudflare Worker proxy in front of Shopify (`shop/` — not yet built)
+- Discord community gating bot (partially built; deployment pending)
+
+### Platform Expansion
 - Artist opt-in licensing agreement for recursive ordinal use in external projects
 - BSV21 governance token for curator council elections and platform feature voting
 - Per-artist branded storefronts via Shopify Collaborator access
-- Self-hosted infrastructure migration as a cost lever post-scale
-- Mobile optimization across all portals
 
 ---
 
