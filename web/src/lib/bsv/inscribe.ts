@@ -186,8 +186,9 @@ export async function inscribeOrdinal(params: InscribeParams): Promise<InscribeR
   const broadcaster = new WhatsOnChainBroadcaster('main')
   const result = await tx.broadcast(broadcaster)
 
-  if (!result || typeof result === 'string') {
-    throw new Error(`Broadcast failed: ${result}`)
+  if (!result || result.status === 'error') {
+    const desc = result && 'description' in result ? result.description : String(result)
+    throw new Error(`Broadcast failed: ${desc}`)
   }
 
   const txid = tx.id('hex')
