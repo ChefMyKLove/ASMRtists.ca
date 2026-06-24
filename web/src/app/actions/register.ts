@@ -17,7 +17,7 @@ export async function createArtistProfile(
       stage_name: stageName,
       bio,
       location,
-      status: 'pending',
+      status: 'active',
     })
 
   if (error) return { error: error.message }
@@ -32,6 +32,7 @@ export async function createArtistProfile(
   await supabase
     .from('user_roles')
     .upsert({ user_id: userId, role: 'artist', status: 'active' }, { onConflict: 'user_id,role' })
+
 
   return { error: null }
 }
