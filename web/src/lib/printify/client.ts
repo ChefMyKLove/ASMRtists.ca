@@ -8,7 +8,7 @@
 const API = 'https://api.printify.com/v1'
 
 function token() {
-  const t = process.env.PRINTIFY_API_TOKEN
+  const t = process.env.PRINTIFY_API_TOKEN ?? process.env.PRINTIFY_API_KEY
   if (!t) throw new Error('PRINTIFY_API_TOKEN env var is required')
   return t
 }
