@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { useWallet } from '@1sat/react'
 import { getOrdinals, transferOrdinals, sendBsv } from '@1sat/actions'
-import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction, cancelListingAction, validateListingAction } from '@/app/actions/ordinals'
+import { mintOrdinalAction, createListingAction, confirmListingEscrow, purchaseListingAction, cancelListingAction, validateListingAction, getListingSplitAction } from '@/app/actions/ordinals'
 import { buildActionContext, findOrdinalOutput, type WalletConnection } from '@/lib/wallet/connectors'
 import type { MintableItem, ListingItem, OwnableItem } from './page'
 import {
@@ -722,15 +722,26 @@ function ListingCard({
       setStage('error'); setError('Wallet not connected — please reconnect your Yours Wallet'); return
     }
 
+    // Get server-computed split amounts so buyer's tx includes all three outputs
+    const split = await getListingSplitAction(listing.id)
+    if (!split.ok || !split.sellerAddress || !split.platformAddress || !split.curatorAddress) {
+      setStage('error'); setError(split.error ?? 'Could not load payment details'); return
+    }
+
     const ctx = buildActionContext(walletIface)
 
-    // Send price_mnee value as satoshis to seller (placeholder until MNEE token payment)
-    const totalSats = Math.max(1, Math.floor(Number(listing.price_mnee)))
+    // Multi-output payment: seller 75%, platform 10%, curator 15%
+    const requests: { address: string; satoshis: number }[] = [
+      { address: split.sellerAddress, satoshis: split.sellerSats! },
+      { address: split.platformAddress, satoshis: split.platformSats! },
+    ]
+    if (split.curatorAddress !== split.platformAddress) {
+      requests.push({ address: split.curatorAddress, satoshis: split.curatorSats! })
+    }
+
     let paymentTxid: string
     try {
-      const result = await sendBsv.execute(ctx, {
-        requests: [{ address: listing.seller_ord_address, satoshis: totalSats }],
-      })
+      const result = await sendBsv.execute(ctx, { requests })
       if (!result.txid) throw new Error(result.error ?? 'Wallet did not return a txid')
       paymentTxid = result.txid
     } catch (err) {
@@ -739,12 +750,12 @@ function ListingCard({
 
     setStage('delivering')
 
-    const result = await purchaseListingAction(listing.id, wallet.ordAddress, paymentTxid)
-    if (!result.ok) {
-      setStage('error'); setError(result.error ?? 'Delivery failed'); return
+    const purchaseResult = await purchaseListingAction(listing.id, wallet.ordAddress, paymentTxid)
+    if (!purchaseResult.ok) {
+      setStage('error'); setError(purchaseResult.error ?? 'Delivery failed'); return
     }
 
-    setSaleTxid(result.saleTxid ?? '')
+    setSaleTxid(purchaseResult.saleTxid ?? '')
     setStage('done')
   }
 

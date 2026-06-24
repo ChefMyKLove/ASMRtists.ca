@@ -132,24 +132,25 @@ export async function deliverOrdinalFromEscrow(
 }
 
 /**
- * Verify that a payment transaction included the required outputs.
- *
- * @param paymentTxid  The txid of the buyer's payment transaction
- * @param sellerAddress  Expected recipient (seller's BSV address)
- * @param minSatoshis  Minimum satoshis expected in the output to seller
+ * Verify that a payment transaction includes ALL required split outputs.
+ * Each entry must appear as a P2PKH output with at least `minSats` satoshis.
+ * Used to enforce the 75/15/10 revenue split before delivering an ordinal.
  */
-export async function verifyPaymentTx(
+export async function verifyPaymentSplit(
   paymentTxid: string,
-  sellerAddress: string,
-  minSatoshis: number,
+  required: { address: string; minSats: number }[],
 ): Promise<boolean> {
   try {
     const rawHex = await fetchRawTx(paymentTxid)
     const tx = Transaction.fromHex(rawHex)
-    const expectedLock = new P2PKH().lock(sellerAddress).toHex()
-    return tx.outputs.some(
-      (o) => o.lockingScript.toHex() === expectedLock && (o.satoshis ?? 0) >= minSatoshis,
-    )
+    const lockHexes = tx.outputs.map((o) => ({
+      lockHex: o.lockingScript.toHex(),
+      satoshis: o.satoshis ?? 0,
+    }))
+    return required.every(({ address, minSats }) => {
+      const expected = new P2PKH().lock(address).toHex()
+      return lockHexes.some((o) => o.lockHex === expected && o.satoshis >= minSats)
+    })
   } catch {
     return false
   }

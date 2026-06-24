@@ -209,18 +209,16 @@ export async function POST(req: NextRequest) {
       } else {
         await admin.from('artwork').update({ status: 'minting' }).eq('id', artworkId)
 
-        // Download from storage (may already be in memory from Printify step, but keep separate)
+        // Prefer the JPEG-optimised version (≤400 KB) for the inscription.
+      // Fall back to the original only if JPEG conversion never ran.
+        const inscribePath = (artwork.jpeg_storage_path as string | null) ?? artwork.storage_path
         const { data: fileData, error: dlErr } = await admin.storage
           .from('artwork-originals')
-          .download(artwork.storage_path)
+          .download(inscribePath)
 
         if (dlErr || !fileData) throw new Error(`Storage download failed: ${dlErr?.message}`)
 
         const buffer = Buffer.from(await fileData.arrayBuffer())
-
-        // Determine content type
-        const filename = artwork.storage_path.toLowerCase()
-        const contentType = filename.endsWith('.png') ? 'image/png' : 'image/jpeg'
 
         const inscribeResult = await inscribeWithRetry({
           jpegData: buffer,
@@ -229,7 +227,7 @@ export async function POST(req: NextRequest) {
             app: 'ASMRtists',
             type: 'ord',
             artworkId: String(artworkId),
-            contentType,
+            contentType: 'image/jpeg',
           },
         })
 

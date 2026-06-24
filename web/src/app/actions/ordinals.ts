@@ -5,7 +5,14 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import sharp from 'sharp'
 import { inscribeWithRetry } from '@/lib/bsv/inscribe'
 import { verifyOwnership } from '@/lib/bsv/auth'
-import { deliverOrdinalFromEscrow, getPlatformEscrowAddress, verifyPaymentTx } from '@/lib/bsv/marketplace'
+import { deliverOrdinalFromEscrow, getPlatformEscrowAddress, verifyPaymentSplit } from '@/lib/bsv/marketplace'
+
+// ─── Revenue split constants ──────────────────────────────────────────────────
+// Applied on ALL ordinal sales (initial + resale) through the platform escrow.
+// Royalties are enforced at delivery time — no BSV protocol support required.
+export const SELLER_SHARE  = 0.75  // artist on primary sale, collector on resale
+export const CURATOR_SHARE = 0.15  // routes to CURATOR_TREASURY_ADDRESS
+export const PLATFORM_SHARE = 0.10 // routes to platform funding wallet
 
 const JPEG_MAX_BYTES = 400 * 1024 // 400 KB
 
@@ -406,16 +413,72 @@ export async function confirmListingEscrow(
   return { ok: true }
 }
 
+// ─── Payment split lookup ─────────────────────────────────────────────────────
+
+/**
+ * Return the exact BSV outputs the buyer's wallet must include in their payment tx.
+ * The client calls this before `sendBsv` so it can build the correct multi-output tx.
+ */
+export async function getListingSplitAction(listingId: string): Promise<{
+  ok: boolean
+  sellerAddress?: string
+  platformAddress?: string
+  curatorAddress?: string
+  sellerSats?: number
+  platformSats?: number
+  curatorSats?: number
+  totalSats?: number
+  error?: string
+}> {
+  const admin = createAdminClient()
+
+  const { data: listing } = await admin
+    .from('ordinal_listings')
+    .select('id, price_mnee, seller_ord_address, status')
+    .eq('id', listingId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (!listing) return { ok: false, error: 'Listing not found or not active' }
+
+  let platformAddress: string
+  try {
+    platformAddress = getPlatformEscrowAddress()
+  } catch {
+    return { ok: false, error: 'Platform not configured for payments' }
+  }
+
+  // Curator treasury — separate env var so payouts can be routed independently.
+  // Falls back to the platform address until a dedicated curator wallet is set.
+  const curatorAddress = process.env.CURATOR_TREASURY_ADDRESS ?? platformAddress
+
+  const totalSats = Math.max(3, Math.floor(Number(listing.price_mnee)))
+  const sellerSats = Math.max(1, Math.floor(totalSats * SELLER_SHARE))
+  const platformSats = Math.max(1, Math.floor(totalSats * PLATFORM_SHARE))
+  const curatorSats = Math.max(1, totalSats - sellerSats - platformSats) // remainder avoids rounding drift
+
+  return {
+    ok: true,
+    sellerAddress: listing.seller_ord_address as string,
+    platformAddress,
+    curatorAddress,
+    sellerSats,
+    platformSats,
+    curatorSats,
+    totalSats,
+  }
+}
+
 // ─── Purchase listing ─────────────────────────────────────────────────────────
 
 /**
- * Complete a purchase: verify the buyer's payment transaction then deliver
- * the ordinal from platform escrow to the buyer's ordinals address.
+ * Complete a purchase: verify the buyer's payment transaction includes all
+ * required split outputs, then deliver the ordinal from escrow.
  *
- * Revenue split (from payment tx):
- *   70% → seller_ord_address  (verified via paymentTxid)
- *   30% → platform-managed split (holders 15%, curators 10%, platform 5%)
- *          — the client is responsible for including all outputs in sendBsv
+ * Revenue split enforced on ALL sales (primary + resale):
+ *   75% → seller (artist on primary sale, collector on resale)
+ *   15% → curator treasury (CURATOR_TREASURY_ADDRESS or platform wallet)
+ *   10% → platform (PLATFORM_FUNDING_WIF address)
  */
 export async function purchaseListingAction(
   listingId: string,
@@ -449,11 +512,24 @@ export async function purchaseListingAction(
     return { ok: false, error: 'This listing is no longer available — the ordinal has moved from escrow. The listing has been removed.' }
   }
 
-  // Verify payment: at least 70% of price_mnee in satoshis went to seller
-  const sellerSats = Math.floor(Number(listing.price_mnee) * 0.70)
-  const paymentValid = await verifyPaymentTx(paymentTxid, listing.seller_ord_address, sellerSats)
+  // Verify all three split outputs are present in the payment tx
+  const platformAddress = getPlatformEscrowAddress()
+  const curatorAddress = process.env.CURATOR_TREASURY_ADDRESS ?? platformAddress
+  const totalSats = Math.max(3, Math.floor(Number(listing.price_mnee)))
+  const sellerSats = Math.max(1, Math.floor(totalSats * SELLER_SHARE))
+  const platformSats = Math.max(1, Math.floor(totalSats * PLATFORM_SHARE))
+  const curatorSats = Math.max(1, totalSats - sellerSats - platformSats)
+
+  const paymentValid = await verifyPaymentSplit(paymentTxid, [
+    { address: listing.seller_ord_address as string, minSats: sellerSats },
+    { address: platformAddress, minSats: platformSats },
+    ...(curatorAddress !== platformAddress
+      ? [{ address: curatorAddress, minSats: curatorSats }]
+      : [] // when curator == platform, the platform output covers both shares
+    ),
+  ])
   if (!paymentValid) {
-    return { ok: false, error: 'Payment could not be verified on-chain. Check the txid and try again.' }
+    return { ok: false, error: 'Payment split could not be verified. Ensure seller received 75%, platform 10%, and curator treasury 15%.' }
   }
 
   // Collect all other active escrow txids so the delivery tx doesn't

@@ -13,12 +13,14 @@ import {
   OP,
   P2PKH,
   PrivateKey,
+  SatoshisPerKilobyte,
   Transaction,
   WhatsOnChainBroadcaster,
 } from '@bsv/sdk'
 
 const WOC = 'https://api.whatsonchain.com/v1/bsv/main'
-const SAT_PER_BYTE = 0.5 // fee rate (sat/byte) — conservative for fast confirmation
+// BSV miners accept as low as 1 sat/kb. Use 2 sat/kb for fast broadcast with margin.
+const FEE_MODEL = new SatoshisPerKilobyte(2)
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -124,8 +126,9 @@ export async function inscribeOrdinal(params: InscribeParams): Promise<InscribeR
   }
 
   // 2. Estimate fee & pick covering UTXOs
-  const inscriptionSize = params.jpegData.length + 200 // rough overhead
-  const estimatedFee = Math.ceil(inscriptionSize * SAT_PER_BYTE) + 500
+  // Use sat/kb model: 2 sat/kb + generous overhead buffer for the inscription envelope
+  const inscriptionKb = (params.jpegData.length + 500) / 1024
+  const estimatedFee = Math.ceil(inscriptionKb * 2) + 2000 // 2 sat/kb + 2000 sat buffer
   const ORDINAL_SAT = 1
 
   let selected: WocUtxo[] = []
@@ -178,8 +181,8 @@ export async function inscribeOrdinal(params: InscribeParams): Promise<InscribeR
     change: true, // SDK auto-calculates change after fee
   })
 
-  // 5. Compute fee and sign
-  await tx.fee()
+  // 5. Compute fee (2 sat/kb — very cheap on BSV) and sign
+  await tx.fee(FEE_MODEL)
   await tx.sign()
 
   // 6. Broadcast

@@ -86,15 +86,49 @@ export default async function BrowsePage() {
   })
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-  function coverUrl(path: string | null): string | null {
-    if (!path) return null
-    const encoded = path.split('/').map(encodeURIComponent).join('/')
+
+  function resolveImageUrl(urlOrPath: string | null): string | null {
+    if (!urlOrPath) return null
+    // Already a full URL — return as-is
+    if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) return urlOrPath
+    // Relative storage path — build the full URL
+    const encoded = urlOrPath.split('/').map(encodeURIComponent).join('/')
     return `${supabaseUrl}/storage/v1/object/public/artwork-originals/${encoded}`
   }
+
+  // For collections missing a cover image, fetch first visible artwork as fallback
+  const collectionIds = (collectionsRes.data ?? []).map((c) => c.id as string)
+  const missingCoverColIds = (collectionsRes.data ?? [])
+    .filter((c) => !c.cover_image_url)
+    .map((c) => c.id as string)
+
+  const artworkFallbackMap = new Map<string, string>()
+  if (missingCoverColIds.length > 0) {
+    const { data: fallbackArtworks } = await admin
+      .from('artwork')
+      .select('collection_id, thumbnail_url, storage_path, status')
+      .in('collection_id', missingCoverColIds)
+      .not('status', 'in', '("pending_review","rejected")')
+      .limit(missingCoverColIds.length * 10)
+
+    for (const aw of fallbackArtworks ?? []) {
+      const colId = aw.collection_id as string
+      if (!artworkFallbackMap.has(colId)) {
+        const imgUrl = resolveImageUrl((aw.thumbnail_url as string | null) ?? (aw.storage_path as string | null))
+        if (imgUrl) artworkFallbackMap.set(colId, imgUrl)
+      }
+    }
+  }
+
+  void collectionIds // suppress unused-var lint
 
   const collections = (collectionsRes.data ?? []).map((col) => {
     const userId = artistToUserMap.get(col.artist_id as string)
     const profileData = userId ? profileDataMap.get(userId) : undefined
+    const coverImageUrl =
+      resolveImageUrl(col.cover_image_url as string | null) ??
+      artworkFallbackMap.get(col.id as string) ??
+      null
     return {
       id: col.id as string,
       title: col.title as string,
@@ -103,9 +137,7 @@ export default async function BrowsePage() {
       artistName: profiles.find(ap => ap.id === col.artist_id)
         ? ((profiles.find(ap => ap.id === col.artist_id)?.stage_name as string | null) ?? 'Artist')
         : 'Artist',
-      coverImageUrl: (col.cover_image_url as string | null)
-        ? coverUrl(col.cover_image_url as string)
-        : null,
+      coverImageUrl,
       pieceCount: (col.piece_count as number) ?? 0,
     }
   }).filter((c) => c.artistSlug !== '')
