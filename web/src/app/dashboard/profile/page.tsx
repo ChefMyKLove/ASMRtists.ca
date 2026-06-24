@@ -14,7 +14,7 @@ export default async function ProfilePage() {
   const admin = createAdminClient()
 
   // Fetch all profile data in parallel
-  const [profileRes, artistRes, walletRes, rolesRes] = await Promise.all([
+  const [profileRes, artistRes, walletRes, ordWalletRes, rolesRes] = await Promise.all([
     admin.from('profiles').select('*').eq('id', user.id).single(),
     admin.from('artist_profiles')
       .select('stage_name, bio, avatar_url, banner_url, location, status, piece_count')
@@ -24,6 +24,11 @@ export default async function ProfilePage() {
       .select('address')
       .eq('user_id', user.id)
       .eq('label', 'Primary')
+      .maybeSingle(),
+    admin.from('wallets')
+      .select('address')
+      .eq('user_id', user.id)
+      .eq('label', 'Ordinals')
       .maybeSingle(),
     admin.from('user_roles')
       .select('role, status')
@@ -35,6 +40,7 @@ export default async function ProfilePage() {
 
   const artistProfile = artistRes.data ?? null
   const wallet = walletRes.data ?? null
+  const ordWallet = ordWalletRes.data ?? null
   const rawRoles = rolesRes.data ?? []
   // If the user has an artist profile, ensure the artist role badge shows
   // even if the user_roles row hasn't been inserted yet.
@@ -56,6 +62,7 @@ export default async function ProfilePage() {
       bannerUrl={profile.banner_url ?? null}
       socialLinks={socialLinks}
       bsvAddress={wallet?.address ?? null}
+      ordAddress={ordWallet?.address ?? null}
       artistProfile={artistProfile}
       userRoles={userRoles}
     />

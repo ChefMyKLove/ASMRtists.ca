@@ -112,6 +112,27 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
     })
     .filter((o): o is NonNullable<typeof o> => o !== null)
 
+  // Build collections for the Collections tab
+  const collectionsForClient = (collections ?? []).map((col) => {
+    const artworkList = (col.artwork ?? []) as {
+      status: string
+      storage_path: string | null
+      thumbnail_url: string | null
+    }[]
+    const visibleArtworks = artworkList.filter(
+      (a) => a.status !== 'pending_review' && a.status !== 'rejected'
+    )
+    const first = visibleArtworks[0]
+    const coverImageUrl = first?.thumbnail_url ?? (first?.storage_path ? getStorageUrl(first.storage_path) : null)
+    return {
+      id: col.id as string,
+      title: col.title as string,
+      slug: col.slug as string,
+      coverImageUrl,
+      pieceCount: visibleArtworks.length,
+    }
+  })
+
   const socialLinks = (profile.social_links as Record<string, string> | null) ?? {}
 
   // Prefer artist_profile fields, fall back to profile fields
@@ -210,6 +231,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
           artworks={artworks}
           ordinals={ordinals}
           artistSlug={slug}
+          collections={collectionsForClient}
         />
       </div>
     </div>

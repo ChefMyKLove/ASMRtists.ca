@@ -45,6 +45,7 @@ interface ProfileEditorProps {
   bannerUrl: string | null
   socialLinks: { twitter?: string; instagram?: string; website?: string }
   bsvAddress: string | null
+  ordAddress: string | null
   artistProfile: ArtistProfileData | null
   userRoles: { role: string; status: string }[]
 }
@@ -80,6 +81,7 @@ export function ProfileEditor({
   bannerUrl: initialBannerUrl,
   socialLinks: initialSocialLinks,
   bsvAddress,
+  ordAddress,
   artistProfile,
   userRoles,
 }: ProfileEditorProps) {
@@ -487,7 +489,7 @@ export function ProfileEditor({
       )}
 
       {/* ── Wallet ─────────────────────────────────────────────── */}
-      <ProfileWalletSection bsvAddress={bsvAddress} />
+      <ProfileWalletSection bsvAddress={bsvAddress} ordAddress={ordAddress} />
     </div>
   )
 }

@@ -4,29 +4,28 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { WalletConnector } from './wallet-connector'
 import { WalletGenerator } from './wallet-generator'
-import { saveBsvAddressAction } from '@/app/actions/profile'
+import { saveBsvAddressAction, saveOrdAddressAction } from '@/app/actions/profile'
 import type { WalletConnection } from '@/lib/wallet/connectors'
 import { Button } from '@/components/ui/button'
 import { Copy, Check, Pencil } from 'lucide-react'
 
 interface ProfileWalletSectionProps {
   bsvAddress: string | null
+  ordAddress: string | null
 }
 
-export function ProfileWalletSection({ bsvAddress }: ProfileWalletSectionProps) {
+export function ProfileWalletSection({ bsvAddress, ordAddress }: ProfileWalletSectionProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
-  async function saveAddress(address: string) {
+  async function saveAddresses(payAddress: string, ordAddress: string) {
     setSaveError(null)
-    const { error } = await saveBsvAddressAction(address)
-    if (error) {
-      setSaveError(error)
-      return
-    }
+    const { error: e1 } = await saveBsvAddressAction(payAddress)
+    if (e1) { setSaveError(e1); return }
+    await saveOrdAddressAction(ordAddress)
     startTransition(() => {
       router.refresh()
       setEditing(false)
@@ -34,11 +33,11 @@ export function ProfileWalletSection({ bsvAddress }: ProfileWalletSectionProps) 
   }
 
   function handleBrowserWalletConnected(conn: WalletConnection) {
-    saveAddress(conn.bsvAddress)
+    saveAddresses(conn.bsvAddress, conn.ordAddress)
   }
 
-  function handleGeneratorConfirmed(address: string) {
-    saveAddress(address)
+  function handleGeneratorConfirmed(payAddress: string, ordAddress: string) {
+    saveAddresses(payAddress, ordAddress)
   }
 
   function copyAddress() {
@@ -66,7 +65,7 @@ export function ProfileWalletSection({ bsvAddress }: ProfileWalletSectionProps) 
         </div>
 
         <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">BSV Address</p>
+          <p className="text-xs text-muted-foreground">BSV Pay Address</p>
           <div className="flex items-center gap-2">
             <p className="text-sm font-mono break-all text-white/80 flex-1">{bsvAddress}</p>
             <button
@@ -84,8 +83,15 @@ export function ProfileWalletSection({ bsvAddress }: ProfileWalletSectionProps) 
           </div>
         </div>
 
+        {ordAddress && ordAddress !== bsvAddress && (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">BSV Ordinals Address</p>
+            <p className="text-sm font-mono break-all text-white/80">{ordAddress}</p>
+          </div>
+        )}
+
         <p className="text-xs text-muted-foreground">
-          MNEE payments and ordinals will be sent to this address.
+          MNEE payments and ordinals will be sent to these addresses.
         </p>
       </div>
     )

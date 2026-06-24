@@ -46,10 +46,19 @@ interface Ordinal {
   holderCount: number
 }
 
+interface Collection {
+  id: string
+  title: string
+  slug: string
+  coverImageUrl: string | null
+  pieceCount: number
+}
+
 interface ArtistPageClientProps {
   artworks: Artwork[]
   ordinals: Ordinal[]
   artistSlug: string
+  collections: Collection[]
 }
 
 const rarityColors: Record<Ordinal['rarity'], string> = {
@@ -63,7 +72,7 @@ function truncateId(id: string, chars = 8) {
   return id.length > chars * 2 ? `${id.slice(0, chars)}…${id.slice(-4)}` : id
 }
 
-export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageClientProps) {
+export function ArtistPageClient({ artworks, ordinals, artistSlug, collections }: ArtistPageClientProps) {
   const [selectedArtwork, setSelectedArtwork] = useState<Artwork | null>(null)
   const [shopModalOpen, setShopModalOpen] = useState(false)
   const [shopUrl, setShopUrl] = useState('')
@@ -199,8 +208,16 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
         />
       </div>
 
-      <Tabs defaultValue="gallery" className="pb-16">
+      <Tabs defaultValue="collections" className="pb-16">
         <TabsList className="mb-6 bg-white/5">
+          <TabsTrigger value="collections">
+            Collections
+            {collections.length > 0 && (
+              <span className="ml-1.5 text-[10px] text-muted-foreground">
+                {collections.length}
+              </span>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="gallery">
             Gallery
             {artworks.length > 0 && (
@@ -218,6 +235,49 @@ export function ArtistPageClient({ artworks, ordinals, artistSlug }: ArtistPageC
             )}
           </TabsTrigger>
         </TabsList>
+
+        {/* ── Collections tab ──────────────────────────────────── */}
+        <TabsContent value="collections">
+          {collections.length === 0 ? (
+            <div className="py-20 text-center text-muted-foreground text-sm">
+              No collections yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {collections.map((col) => (
+                <Link
+                  key={col.id}
+                  href={`/c/${artistSlug}/${col.slug}`}
+                  className="group block"
+                >
+                  <Card className="glass overflow-hidden hover:ring-1 hover:ring-white/20 transition-all duration-200">
+                    <div className="relative aspect-square bg-white/5">
+                      {col.coverImageUrl ? (
+                        <Image
+                          src={col.coverImageUrl}
+                          alt={col.title}
+                          fill
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-gradient-to-br from-violet-900/30 to-pink-900/30" />
+                      )}
+                    </div>
+                    <CardContent className="p-3 space-y-0.5">
+                      <p className="text-sm font-medium truncate group-hover:text-white transition-colors">
+                        {col.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {col.pieceCount} {col.pieceCount === 1 ? 'piece' : 'pieces'}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          )}
+        </TabsContent>
 
         {/* ── Gallery tab ─────────────────────────────────────── */}
         <TabsContent value="gallery">

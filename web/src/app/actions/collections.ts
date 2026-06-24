@@ -56,6 +56,7 @@ export async function insertArtworkAction(
   storagePath: string,
   widthPx: number | null,
   heightPx: number | null,
+  ordinalPriceMnee: number | null = null,
 ): Promise<{ id: string | null; error: string | null }> {
   const supabase = await createClient()
   const { data: { user }, error: authErr } = await supabase.auth.getUser()
@@ -84,6 +85,7 @@ export async function insertArtworkAction(
       status: 'uploaded',
       width_px: widthPx,
       height_px: heightPx,
+      ordinal_price_mnee: ordinalPriceMnee,
     })
     .select('id')
     .single()

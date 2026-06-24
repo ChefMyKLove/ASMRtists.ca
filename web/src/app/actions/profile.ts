@@ -44,6 +44,45 @@ export async function saveBsvAddressAction(
   return { error: null }
 }
 
+export async function saveOrdAddressAction(
+  ordAddress: string,
+): Promise<{ error: string | null }> {
+  const supabase = await createClient()
+  const { data: { user }, error: authErr } = await supabase.auth.getUser()
+  if (authErr || !user) return { error: 'Not authenticated' }
+
+  const admin = createAdminClient()
+
+  const { data: existing } = await admin
+    .from('wallets')
+    .select('id')
+    .eq('user_id', user.id)
+    .eq('label', 'Ordinals')
+    .maybeSingle()
+
+  if (existing) {
+    const { error } = await admin
+      .from('wallets')
+      .update({ address: ordAddress })
+      .eq('id', existing.id)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await admin
+      .from('wallets')
+      .insert({
+        user_id: user.id,
+        address: ordAddress,
+        public_key: ordAddress,
+        is_external: true,
+        label: 'Ordinals',
+      })
+    if (error) return { error: error.message }
+  }
+
+  revalidatePath('/dashboard/profile')
+  return { error: null }
+}
+
 export async function updateProfileAction(data: {
   display_name?: string
   bio?: string

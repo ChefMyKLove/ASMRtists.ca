@@ -7,7 +7,7 @@ import { SeedPhraseDisplay } from './seed-phrase-display'
 import { Wallet, AlertCircle } from 'lucide-react'
 
 interface WalletGeneratorProps {
-  onAddressConfirmed?: (address: string) => void
+  onAddressConfirmed?: (payAddress: string, ordAddress: string) => void
 }
 
 export function WalletGenerator({ onAddressConfirmed }: WalletGeneratorProps) {
@@ -15,6 +15,7 @@ export function WalletGenerator({ onAddressConfirmed }: WalletGeneratorProps) {
   const [wallet, setWallet] = useState<{
     mnemonic: string
     address: string
+    ordAddress: string
     wif: string
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -26,7 +27,7 @@ export function WalletGenerator({ onAddressConfirmed }: WalletGeneratorProps) {
     try {
       const { generateWallet } = await import('@/lib/bsv/wallet')
       const result = generateWallet()
-      setWallet(result)
+      setWallet({ mnemonic: result.mnemonic, address: result.address, ordAddress: result.ordAddress, wif: result.wif })
       setStep('confirm')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate wallet')
@@ -36,7 +37,7 @@ export function WalletGenerator({ onAddressConfirmed }: WalletGeneratorProps) {
 
   function handleConfirm() {
     if (wallet) {
-      onAddressConfirmed?.(wallet.address)
+      onAddressConfirmed?.(wallet.address, wallet.ordAddress)
     }
   }
 
@@ -76,7 +77,7 @@ export function WalletGenerator({ onAddressConfirmed }: WalletGeneratorProps) {
 
         {step === 'confirm' && wallet && (
           <div className="space-y-4">
-            <SeedPhraseDisplay mnemonic={wallet.mnemonic} address={wallet.address} />
+            <SeedPhraseDisplay mnemonic={wallet.mnemonic} address={wallet.address} ordAddress={wallet.ordAddress} />
             <Button onClick={handleConfirm} className="w-full">
               I have saved my seed phrase
             </Button>

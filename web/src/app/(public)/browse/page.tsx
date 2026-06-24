@@ -25,13 +25,25 @@ export default async function BrowsePage() {
   const userIds = profiles.map((a) => a.user_id)
   const artistIds = profiles.map((a) => a.id)
 
-  // Fetch usernames, profile images (fallback), and ordinals flags in parallel
-  const [profilesRes, artworksRes] = await Promise.all([
+  // Build artist_id → user_id map for collection lookups
+  const artistToUserMap = new Map(profiles.map((ap) => [ap.id as string, ap.user_id as string]))
+
+  // Fetch usernames, profile images, ordinals flags, and collections in parallel
+  const [profilesRes, artworksRes, collectionsRes] = await Promise.all([
     userIds.length > 0
       ? admin.from('profiles').select('id, username, avatar_url, banner_url').in('id', userIds)
       : Promise.resolve({ data: [] }),
     artistIds.length > 0
       ? admin.from('artwork').select('artist_id, inscription_outpoint').in('artist_id', artistIds)
+      : Promise.resolve({ data: [] }),
+    artistIds.length > 0
+      ? admin
+          .from('collections')
+          .select('id, title, slug, cover_image_url, piece_count, artist_id')
+          .eq('status', 'active')
+          .in('artist_id', artistIds)
+          .order('created_at', { ascending: false })
+          .limit(24)
       : Promise.resolve({ data: [] }),
   ])
 
@@ -73,6 +85,31 @@ export default async function BrowsePage() {
     }
   })
 
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  function coverUrl(path: string | null): string | null {
+    if (!path) return null
+    const encoded = path.split('/').map(encodeURIComponent).join('/')
+    return `${supabaseUrl}/storage/v1/object/public/artwork-originals/${encoded}`
+  }
+
+  const collections = (collectionsRes.data ?? []).map((col) => {
+    const userId = artistToUserMap.get(col.artist_id as string)
+    const profileData = userId ? profileDataMap.get(userId) : undefined
+    return {
+      id: col.id as string,
+      title: col.title as string,
+      slug: col.slug as string,
+      artistSlug: profileData?.username ?? '',
+      artistName: profiles.find(ap => ap.id === col.artist_id)
+        ? ((profiles.find(ap => ap.id === col.artist_id)?.stage_name as string | null) ?? 'Artist')
+        : 'Artist',
+      coverImageUrl: (col.cover_image_url as string | null)
+        ? coverUrl(col.cover_image_url as string)
+        : null,
+      pieceCount: (col.piece_count as number) ?? 0,
+    }
+  }).filter((c) => c.artistSlug !== '')
+
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
       <div className="mb-8">
@@ -81,7 +118,7 @@ export default async function BrowsePage() {
           Discover independent artists and their collections.
         </p>
       </div>
-      <BrowseClient artists={artists} />
+      <BrowseClient artists={artists} collections={collections} />
     </div>
   )
 }

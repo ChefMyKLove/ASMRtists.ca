@@ -8,9 +8,10 @@ import { truncateAddress } from '@/lib/utils'
 interface SeedPhraseDisplayProps {
   mnemonic: string
   address: string
+  ordAddress?: string
 }
 
-export function SeedPhraseDisplay({ mnemonic, address }: SeedPhraseDisplayProps) {
+export function SeedPhraseDisplay({ mnemonic, address, ordAddress }: SeedPhraseDisplayProps) {
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -81,12 +82,21 @@ export function SeedPhraseDisplay({ mnemonic, address }: SeedPhraseDisplayProps)
       </div>
 
       <div className="p-3 rounded-lg bg-white/5 border border-white/10">
-        <p className="text-xs text-muted-foreground mb-1">BSV Address</p>
+        <p className="text-xs text-muted-foreground mb-1">BSV Pay Address</p>
         <p className="font-mono text-xs text-white/80 break-all">{address}</p>
         <p className="text-xs text-muted-foreground mt-1">
           Short: {truncateAddress(address)}
         </p>
       </div>
+      {ordAddress && ordAddress !== address && (
+        <div className="p-3 rounded-lg bg-white/5 border border-white/10">
+          <p className="text-xs text-muted-foreground mb-1">BSV Ordinals Address</p>
+          <p className="font-mono text-xs text-white/80 break-all">{ordAddress}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Short: {truncateAddress(ordAddress)}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

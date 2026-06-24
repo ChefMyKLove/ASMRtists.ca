@@ -2,6 +2,7 @@
  * POST /api/pipeline/process
  *
  * Internal pipeline worker. Processes a single artwork:
+ *   0. Converts original image to inscription-optimised JPEG (sets jpeg_storage_path)
  *   1. Creates a Printify product and publishes it to Shopify
  *   2. Inscribes the image as a BSV 1Sat Ordinal
  *
@@ -10,6 +11,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import sharp from 'sharp'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { inscribeWithRetry } from '@/lib/bsv/inscribe'
 import {
@@ -21,6 +23,8 @@ import {
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+
+const JPEG_MAX_BYTES = 400 * 1024 // 400 KB — ordinal inscription size limit
 
 export async function POST(req: NextRequest) {
   const secret = process.env.PIPELINE_WEBHOOK_SECRET
@@ -45,7 +49,7 @@ export async function POST(req: NextRequest) {
   // Load artwork
   const { data: artwork, error: artErr } = await admin
     .from('artwork')
-    .select('id, title, storage_path, artist_id, status')
+    .select('id, title, storage_path, jpeg_storage_path, artist_id, status')
     .eq('id', artworkId)
     .single()
 
@@ -60,7 +64,52 @@ export async function POST(req: NextRequest) {
   // Mark as processing
   await admin.from('artwork').update({ status: 'processing' }).eq('id', artworkId)
 
-  const results: { printify?: string; bsv?: string; errors: string[] } = { errors: [] }
+  const results: { jpeg?: string; printify?: string; bsv?: string; errors: string[] } = { errors: [] }
+
+  // ── Step 0: JPEG prep ──────────────────────────────────────────────────────────
+  // Convert original to inscription-optimised JPEG so it appears on the ordinals
+  // marketplace for collector minting. Idempotent — skipped if already done.
+
+  let imageBuffer: Buffer | null = null // reuse across steps
+
+  if (!artwork.jpeg_storage_path) {
+    try {
+      const { data: fileData, error: dlErr } = await admin.storage
+        .from('artwork-originals')
+        .download(artwork.storage_path)
+
+      if (dlErr || !fileData) throw new Error(`Storage download failed: ${dlErr?.message ?? 'unknown'}`)
+
+      const ab = await fileData.arrayBuffer()
+      imageBuffer = Buffer.from(ab)
+
+      let quality = 85
+      let jpegBuffer: Buffer
+      do {
+        jpegBuffer = await sharp(imageBuffer)
+          .jpeg({ quality, mozjpeg: true })
+          .toBuffer()
+        quality -= 5
+      } while (jpegBuffer.length > JPEG_MAX_BYTES && quality >= 50)
+
+      const jpegPath = (artwork.storage_path as string).replace(/\.[^.]+$/, '.jpg')
+      const { error: uploadErr } = await admin.storage
+        .from('artwork-originals')
+        .upload(jpegPath, jpegBuffer, { contentType: 'image/jpeg', upsert: true })
+
+      if (uploadErr) throw new Error(`JPEG upload failed: ${uploadErr.message}`)
+
+      await admin.from('artwork').update({ jpeg_storage_path: jpegPath }).eq('id', artworkId)
+      results.jpeg = jpegPath
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      results.errors.push(`JPEG prep: ${msg}`)
+      console.error(`[pipeline] JPEG prep failed for ${artworkId}:`, msg)
+      // Non-fatal — continue with rest of pipeline
+    }
+  } else {
+    results.jpeg = artwork.jpeg_storage_path as string
+  }
 
   // ── Step 1: Printify ─────────────────────────────────────────────────────────
 
@@ -148,9 +197,12 @@ export async function POST(req: NextRequest) {
         .eq('id', artwork.artist_id)
         .single()
 
-      const { data: wallet } = ap
-        ? await admin.from('wallets').select('address').eq('user_id', ap.user_id).maybeSingle()
+      const { data: walletRows } = ap
+        ? await admin.from('wallets').select('address, label').eq('user_id', ap.user_id).in('label', ['Ordinals', 'Primary'])
         : { data: null }
+
+      // Prefer ordinals-specific address; fall back to pay address
+      const wallet = walletRows?.find(w => w.label === 'Ordinals') ?? walletRows?.find(w => w.label === 'Primary') ?? null
 
       if (!wallet?.address) {
         results.errors.push('BSV: artist wallet address not found — skipped')

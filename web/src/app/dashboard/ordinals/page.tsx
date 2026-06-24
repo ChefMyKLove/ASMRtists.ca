@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { ExternalLink, Hash, Wand2, Gem, CheckCircle2 } from 'lucide-react'
+import { ExternalLink, Hash, Wand2, Gem, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { PrepareButton } from './prepare-button'
 
@@ -48,16 +48,21 @@ export default async function OrdinalsPage() {
 
   const { data: allArtwork } = await admin
     .from('artwork')
-    .select('id, title, position, storage_path, jpeg_storage_path, inscription_txid, inscription_outpoint, collection_id, status')
+    .select('id, title, position, storage_path, jpeg_storage_path, inscription_txid, inscription_outpoint, collection_id, status, error_message')
     .eq('artist_id', ap.id)
     .order('position')
 
   const artworks = allArtwork ?? []
 
+  // Error / in-progress buckets
+  const errored = artworks.filter(a => a.status === 'error' || a.status === 'mint_error')
+  const processing = artworks.filter(a => a.status === 'processing' || a.status === 'minting' || a.status === 'shop_pending')
+  const errorIds = new Set([...errored, ...processing].map(a => a.id))
+
   // Stage 1: needs JPEG prep (no jpeg_storage_path, no txid)
-  const needsPrep = artworks.filter(a => !a.jpeg_storage_path && !a.inscription_txid)
+  const needsPrep = artworks.filter(a => !a.jpeg_storage_path && !a.inscription_txid && !errorIds.has(a.id))
   // Stage 2: JPEG ready but not yet minted (jpeg exists, no txid)
-  const readyToMint = artworks.filter(a => a.jpeg_storage_path && !a.inscription_txid)
+  const readyToMint = artworks.filter(a => a.jpeg_storage_path && !a.inscription_txid && !errorIds.has(a.id))
   // Stage 3: fully minted
   const minted = artworks.filter(a => !!a.inscription_txid)
 
@@ -75,6 +80,8 @@ export default async function OrdinalsPage() {
           <p><span className="text-emerald-400 font-medium">{minted.length}</span> minted</p>
           <p><span className="text-violet-400 font-medium">{readyToMint.length}</span> ready</p>
           <p><span className="text-white/40">{needsPrep.length}</span> need prep</p>
+          {processing.length > 0 && <p><span className="text-amber-400 font-medium">{processing.length}</span> processing</p>}
+          {errored.length > 0 && <p><span className="text-red-400 font-medium">{errored.length}</span> errored</p>}
         </div>
       </div>
 
@@ -95,6 +102,81 @@ export default async function OrdinalsPage() {
           <span>Minted on-chain</span>
         </div>
       </div>
+
+      {/* ── Processing ──────────────────────────────────────────── */}
+      {processing.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 text-amber-400 animate-spin" />
+            <h2 className="text-sm font-semibold text-white/80">Pipeline Running</h2>
+            <Badge className="bg-amber-500/15 text-amber-300 border-amber-500/25 text-[10px]">
+              {processing.length}
+            </Badge>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {processing.map(art => (
+              <div key={art.id} className="glass rounded-xl overflow-hidden border border-amber-500/20">
+                {art.storage_path && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={storageUrl(art.storage_path)}
+                    alt={art.title}
+                    className="w-full aspect-square object-cover opacity-40"
+                  />
+                )}
+                <div className="p-3 space-y-1.5">
+                  <p className="font-medium text-sm truncate">{art.title}</p>
+                  <Badge className="bg-amber-500/15 text-amber-300 border-amber-500/25 text-[10px]">
+                    {art.status}
+                  </Badge>
+                  <p className="text-xs text-muted-foreground">Refresh to check progress</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Errors ──────────────────────────────────────────────── */}
+      {errored.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-400" />
+            <h2 className="text-sm font-semibold text-white/80">Pipeline Errors</h2>
+            <Badge className="bg-red-500/15 text-red-300 border-red-500/25 text-[10px]">
+              {errored.length}
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            These pieces encountered errors during processing. Contact support or retry by re-approving the collection.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {errored.map(art => (
+              <div key={art.id} className="glass rounded-xl overflow-hidden border border-red-500/20">
+                {art.storage_path && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={storageUrl(art.storage_path)}
+                    alt={art.title}
+                    className="w-full aspect-square object-cover opacity-40"
+                  />
+                )}
+                <div className="p-3 space-y-1.5">
+                  <p className="font-medium text-sm truncate">{art.title}</p>
+                  <Badge className="bg-red-500/15 text-red-300 border-red-500/25 text-[10px]">
+                    {art.status}
+                  </Badge>
+                  {art.error_message && (
+                    <p className="text-xs text-red-300/70 font-mono break-all">
+                      {art.error_message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Stage 1: Needs Preparation ─────────────────────────── */}
       {needsPrep.length > 0 && (
@@ -231,6 +313,15 @@ export default async function OrdinalsPage() {
                       {truncate(art.inscription_txid!)}
                     </span>
                   </div>
+                  {art.inscription_outpoint && (
+                    <Link
+                      href={`/ordinals#list`}
+                      className="block text-center text-xs bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 rounded-md py-1.5 transition-colors"
+                      title={`Outpoint: ${art.inscription_outpoint}`}
+                    >
+                      List for Sale → connect wallet on marketplace
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}

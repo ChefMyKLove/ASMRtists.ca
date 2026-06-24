@@ -24,6 +24,7 @@ import {
   ArrowRight,
   GripVertical,
   Sparkles,
+  Gem,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -285,6 +286,8 @@ export default function UploadPage() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [ordinalListingEnabled, setOrdinalListingEnabled] = useState(false)
+  const [ordinalPriceMnee, setOrdinalPriceMnee] = useState('')
 
   // Step 2 files
   const [files, setFiles] = useState<UploadFile[]>([])
@@ -379,6 +382,7 @@ export default function UploadPage() {
           storagePath,
           f.width ?? null,
           f.height ?? null,
+          ordinalListingEnabled && ordinalPriceMnee ? Number(ordinalPriceMnee) : null,
         )
         if (artErr) {
           errors.push(`${f.file.name}: ${artErr}`)
@@ -452,6 +456,55 @@ export default function UploadPage() {
               Tags <span className="text-white/30">(optional)</span>
             </Label>
             <TagInput tags={tags} onChange={setTags} />
+          </div>
+
+          {/* Ordinal listing toggle */}
+          <div className="space-y-3 pt-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium text-white/70 flex items-center gap-2 cursor-pointer">
+                <Gem className="h-3.5 w-3.5 text-amber-400" />
+                Enable ordinal collector minting
+              </Label>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={ordinalListingEnabled ? 'true' : 'false'}
+                title={ordinalListingEnabled ? 'Disable ordinal minting' : 'Enable ordinal minting'}
+                onClick={() => setOrdinalListingEnabled((v) => !v)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
+                  ordinalListingEnabled ? 'bg-amber-500' : 'bg-white/15'
+                )}
+              >
+                <span
+                  className={cn(
+                    'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow ring-0 transition-transform',
+                    ordinalListingEnabled ? 'translate-x-4' : 'translate-x-0'
+                  )}
+                />
+              </button>
+            </div>
+
+            {ordinalListingEnabled && (
+              <div className="space-y-1.5 pl-5">
+                <Label htmlFor="ordinal-price" className="text-xs font-medium text-white/70">
+                  Mint price (MNEE) <span className="text-white/30">(optional — leave blank for free)</span>
+                </Label>
+                <Input
+                  id="ordinal-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={ordinalPriceMnee}
+                  onChange={(e) => setOrdinalPriceMnee(e.target.value)}
+                  placeholder="e.g. 10"
+                  className="bg-white/5 border-white/10 focus:border-white/25 max-w-[160px]"
+                />
+                <p className="text-xs text-amber-400/70">
+                  Collectors can mint each piece as a BSV ordinal for this price. Ordinals appear in the marketplace once your collection is approved.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="flex justify-end">
