@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { after } from 'next/server'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   const secret = process.env.PIPELINE_WEBHOOK_SECRET
@@ -25,7 +27,10 @@ export async function POST(request: NextRequest) {
     try {
       const res = await fetch(webhookUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-pipeline-secret': process.env.PIPELINE_WEBHOOK_SECRET ?? '',
+        },
         body: JSON.stringify({ artworkId }),
       })
       if (!res.ok) {
@@ -39,20 +44,23 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // No external URL — run internal pipeline (fire-and-forget so this request returns quickly)
+  // No external URL — run internal pipeline.
+  // Use `after` so Vercel keeps the function alive until the process completes,
+  // even after this response is returned.
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
   const processUrl = `${baseUrl}/api/pipeline/process`
   const pipelineSecret = process.env.PIPELINE_WEBHOOK_SECRET ?? ''
 
-  // Kick off async — don't await so the trigger returns immediately
-  fetch(processUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-pipeline-secret': pipelineSecret,
-    },
-    body: JSON.stringify({ artworkId }),
-  }).catch((err) => console.error('Internal pipeline process error:', err))
+  after(() =>
+    fetch(processUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-pipeline-secret': pipelineSecret,
+      },
+      body: JSON.stringify({ artworkId }),
+    }).catch((err) => console.error('Internal pipeline process error:', err))
+  )
 
   return NextResponse.json({ triggered: true, internal: true })
 }

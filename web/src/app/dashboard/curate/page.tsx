@@ -30,11 +30,22 @@ export default async function CuratePage() {
     redirect('/dashboard')
   }
 
-  const { data: pendingArtwork } = await admin
-    .from('artwork')
-    .select('id, title, storage_path, thumbnail_url, created_at, artist_id')
+  // Find artworks belonging to collections awaiting curator review
+  const { data: pendingCollections } = await admin
+    .from('collections')
+    .select('id')
     .eq('status', 'pending_review')
-    .order('created_at', { ascending: true })
+
+  const pendingCollectionIds = (pendingCollections ?? []).map((c) => c.id as string)
+
+  const { data: pendingArtwork } = pendingCollectionIds.length > 0
+    ? await admin
+        .from('artwork')
+        .select('id, title, storage_path, thumbnail_url, created_at, artist_id')
+        .in('collection_id', pendingCollectionIds)
+        .eq('status', 'uploaded')
+        .order('created_at', { ascending: true })
+    : { data: [] }
 
   const artistIds = [...new Set((pendingArtwork ?? []).map((a) => a.artist_id).filter(Boolean))]
 
