@@ -367,7 +367,7 @@ export default function UploadPage() {
 
       const { error: storageErr } = await supabase.storage
         .from('artwork-originals')
-        .upload(storagePath, f.file, { upsert: false })
+        .upload(storagePath, f.file, { upsert: true })
 
       if (storageErr) {
         errors.push(`${f.file.name}: ${storageErr.message}`)
