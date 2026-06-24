@@ -80,7 +80,7 @@ export async function updateArtistProfileAction(data: {
   const admin = createAdminClient()
   const { error } = await admin
     .from('artist_profiles')
-    .update({ ...data, updated_at: new Date().toISOString() })
+    .update(data)
     .eq('user_id', user.id)
 
   if (error) return { error: error.message }

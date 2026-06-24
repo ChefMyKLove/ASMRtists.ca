@@ -25,17 +25,29 @@ export default async function BrowsePage() {
   const userIds = profiles.map((a) => a.user_id)
   const artistIds = profiles.map((a) => a.id)
 
-  // Fetch usernames and ordinals flags in parallel
+  // Fetch usernames, profile images (fallback), and ordinals flags in parallel
   const [profilesRes, artworksRes] = await Promise.all([
     userIds.length > 0
-      ? admin.from('profiles').select('id, username').in('id', userIds)
+      ? admin.from('profiles').select('id, username, avatar_url, banner_url').in('id', userIds)
       : Promise.resolve({ data: [] }),
     artistIds.length > 0
       ? admin.from('artwork').select('artist_id, inscription_outpoint').in('artist_id', artistIds)
       : Promise.resolve({ data: [] }),
   ])
 
-  const usernameMap = new Map((profilesRes.data ?? []).map((p) => [p.id, p.username as string]))
+  const profileDataMap = new Map(
+    (profilesRes.data ?? []).map((p) => [
+      p.id as string,
+      {
+        username: p.username as string,
+        avatarUrl: p.avatar_url as string | null,
+        bannerUrl: p.banner_url as string | null,
+      },
+    ])
+  )
+  const usernameMap = new Map(
+    (profilesRes.data ?? []).map((p) => [p.id as string, p.username as string])
+  )
 
   const ordinalsSet = new Set<string>()
   const artworkCountMap = new Map<string, number>()
@@ -45,17 +57,21 @@ export default async function BrowsePage() {
     artworkCountMap.set(artistId, (artworkCountMap.get(artistId) ?? 0) + 1)
   }
 
-  const artists = profiles.map((ap) => ({
-    slug: usernameMap.get(ap.user_id) ?? ap.user_id,
-    displayName: (ap.stage_name as string | null) ?? 'Unknown Artist',
-    bio: ap.bio as string | null,
-    artworkCount: artworkCountMap.get(ap.id as string) ?? (ap.piece_count as number) ?? 0,
-    isFeatured: (artworkCountMap.get(ap.id as string) ?? (ap.piece_count as number) ?? 0) >= 3,
-    hasOrdinals: ordinalsSet.has(ap.id as string),
-    hasPrints: false,
-    bannerUrl: ap.banner_url as string | null,
-    avatarUrl: ap.avatar_url as string | null,
-  }))
+  const artists = profiles.map((ap) => {
+    const profileData = profileDataMap.get(ap.user_id as string)
+    return {
+      slug: profileData?.username ?? (ap.user_id as string),
+      displayName: (ap.stage_name as string | null) ?? 'Unknown Artist',
+      bio: ap.bio as string | null,
+      artworkCount: artworkCountMap.get(ap.id as string) ?? (ap.piece_count as number) ?? 0,
+      isFeatured: (artworkCountMap.get(ap.id as string) ?? (ap.piece_count as number) ?? 0) >= 3,
+      hasOrdinals: ordinalsSet.has(ap.id as string),
+      hasPrints: false,
+      // Use artist_profiles image first; fall back to profiles image
+      bannerUrl: (ap.banner_url as string | null) ?? profileData?.bannerUrl ?? null,
+      avatarUrl: (ap.avatar_url as string | null) ?? profileData?.avatarUrl ?? null,
+    }
+  })
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10">
