@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { buttonVariants } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, artworkStorageUrl } from '@/lib/utils'
 import { ImageIcon, Send, Gem, ShoppingBag, Pencil, Star, ExternalLink } from 'lucide-react'
 import { setCollectionCoverImageAction, updateCollectionDescriptionAction } from '@/app/actions/collections'
 
@@ -70,10 +70,7 @@ const ARTWORK_STATUS_LABELS: Record<ArtworkStatus, string> = {
 }
 
 function getStorageUrl(path: string | null): string | null {
-  if (!path) return null
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!base) return null
-  return `${base}/storage/v1/object/public/artwork-originals/${path}`
+  return artworkStorageUrl(path)
 }
 
 interface PageProps {

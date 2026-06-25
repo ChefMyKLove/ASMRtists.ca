@@ -3,14 +3,12 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { CurateClient } from './curate-client'
+import { artworkStorageUrl } from '@/lib/utils'
 
 export const metadata: Metadata = { title: 'Review Queue — Dashboard' }
 
 function buildStorageUrl(path: string | null): string {
-  if (!path) return ''
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!base) return ''
-  return `${base}/storage/v1/object/public/artwork-originals/${path}`
+  return artworkStorageUrl(path) ?? ''
 }
 
 export default async function CuratePage() {

@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 export const revalidate = 300
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { artworkStorageUrl } from '@/lib/utils'
 import { BrowseClient } from './browse-client'
 
 export const metadata: Metadata = {
@@ -85,16 +86,7 @@ export default async function BrowsePage() {
     }
   })
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
-
-  function resolveImageUrl(urlOrPath: string | null): string | null {
-    if (!urlOrPath) return null
-    // Already a full URL — return as-is
-    if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) return urlOrPath
-    // Relative storage path — build the full URL
-    const encoded = urlOrPath.split('/').map(encodeURIComponent).join('/')
-    return `${supabaseUrl}/storage/v1/object/public/artwork-originals/${encoded}`
-  }
+  const resolveImageUrl = artworkStorageUrl
 
   // For collections missing a cover image, fetch first visible artwork as fallback
   const collectionIds = (collectionsRes.data ?? []).map((c) => c.id as string)

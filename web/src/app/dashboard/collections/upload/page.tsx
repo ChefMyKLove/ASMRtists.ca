@@ -8,11 +8,12 @@ import {
   createCollectionAction,
   insertArtworkAction,
   finalizeCollectionAction,
+  setCollectionCoverImageAction,
 } from '@/app/actions/collections'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { cn, formatFileSize } from '@/lib/utils'
+import { cn, formatFileSize, artworkStorageUrl } from '@/lib/utils'
 import {
   Upload,
   ImageIcon,
@@ -363,6 +364,7 @@ export default function UploadPage() {
     // 2. Upload each file to Storage + insert artwork row
     const errors: string[] = []
     let uploaded = 0
+    let firstStoragePath: string | null = null
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
@@ -393,6 +395,7 @@ export default function UploadPage() {
           errors.push(`${f.file.name}: ${artErr}`)
           setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, status: 'error', error: artErr } : x)))
         } else {
+          if (firstStoragePath === null) firstStoragePath = storagePath
           uploaded++
           setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, status: 'success' } : x)))
         }
@@ -401,8 +404,12 @@ export default function UploadPage() {
       setProgress({ uploaded, total: files.length, errors })
     }
 
-    // 3. Finalize collection
+    // 3. Finalize collection — set cover image from first successful upload
     if (uploaded > 0) {
+      if (firstStoragePath) {
+        const coverUrl = artworkStorageUrl(firstStoragePath)
+        if (coverUrl) await setCollectionCoverImageAction(cid, coverUrl)
+      }
       await finalizeCollectionAction(cid, uploaded)
     }
 

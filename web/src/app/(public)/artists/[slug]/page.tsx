@@ -9,16 +9,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { ArtistPageClient } from './artist-page-client'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { artworkStorageUrl } from '@/lib/utils'
 
 interface ArtistPageProps {
   params: Promise<{ slug: string }>
 }
 
 function getStorageUrl(path: string | null): string {
-  if (!path) return ''
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!base) return ''
-  return `${base}/storage/v1/object/public/artwork-originals/${path}`
+  return artworkStorageUrl(path) ?? ''
 }
 
 export async function generateMetadata({ params }: ArtistPageProps): Promise<Metadata> {
@@ -61,7 +59,7 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
   const { data: collections } = artistProfile
     ? await admin
         .from('collections')
-        .select('id, title, slug, artwork(id, title, description, storage_path, thumbnail_url, inscription_txid, inscription_outpoint, status, print_products(shopify_product_handle, product_type))')
+        .select('id, title, slug, cover_image_url, artwork(id, title, description, storage_path, thumbnail_url, inscription_txid, inscription_outpoint, status, print_products(shopify_product_handle, product_type))')
         .eq('artist_id', artistProfile.id)
         .in('status', ['active', 'pending_review'])
     : { data: [] }
@@ -123,7 +121,10 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
       (a) => a.status !== 'pending_review' && a.status !== 'rejected'
     )
     const first = visibleArtworks[0]
-    const coverImageUrl = first?.thumbnail_url ?? (first?.storage_path ? getStorageUrl(first.storage_path) : null)
+    const coverImageUrl =
+      getStorageUrl(col.cover_image_url as string | null) ||
+      first?.thumbnail_url ||
+      (first?.storage_path ? getStorageUrl(first.storage_path) : null)
     return {
       id: col.id as string,
       title: col.title as string,

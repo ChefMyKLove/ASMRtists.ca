@@ -4,7 +4,7 @@ export const revalidate = 300
 
 import Link from 'next/link'
 import { buttonVariants } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, artworkStorageUrl } from '@/lib/utils'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AnimatedRoster } from '@/components/splash/animated-roster'
 import { FeaturedHeroCarousel } from '@/components/splash/featured-carousel'
@@ -74,7 +74,6 @@ export type FeaturedCollection = {
 async function getFeaturedCollections(): Promise<FeaturedCollection[]> {
   try {
     const admin = createAdminClient()
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 
     const { data: setting } = await admin
       .from('platform_settings')
@@ -113,10 +112,8 @@ async function getFeaturedCollections(): Promise<FeaturedCollection[]> {
         const colId = aw.collection_id as string
         if (!artworkFallbackMap.has(colId)) {
           const imgUrl =
-            (aw.thumbnail_url as string | null) ??
-            (aw.storage_path
-              ? `${supabaseUrl}/storage/v1/object/public/artwork-originals/${aw.storage_path}`
-              : null)
+            artworkStorageUrl(aw.thumbnail_url as string | null) ??
+            artworkStorageUrl(aw.storage_path as string | null)
           if (imgUrl) artworkFallbackMap.set(colId, imgUrl)
         }
       }

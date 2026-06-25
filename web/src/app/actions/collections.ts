@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -449,6 +450,9 @@ export async function adminApproveCollectionAction(
       )
     )
   }
+
+  revalidatePath('/browse')
+  revalidatePath('/')
 
   return { error: null }
 }

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { cn } from '@/lib/utils'
+import { cn, artworkStorageUrl } from '@/lib/utils'
 import { buttonVariants } from '@/components/ui/button'
 import { ArrowLeft } from 'lucide-react'
 
@@ -18,10 +18,7 @@ interface PageProps {
 }
 
 function getStorageUrl(path: string | null): string | null {
-  if (!path) return null
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
-  if (!base) return null
-  return `${base}/storage/v1/object/public/artwork-originals/${path}`
+  return artworkStorageUrl(path)
 }
 
 export default async function ArtworkEditPage({ params }: PageProps) {

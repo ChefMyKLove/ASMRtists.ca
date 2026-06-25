@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchProductPrices } from '@/lib/shopify'
+import { artworkStorageUrl } from '@/lib/utils'
 import { CollectionPageClient } from './collection-page-client'
 import type { CollectionArtist, CollectionData } from '@/components/collection/types'
 
@@ -112,15 +113,10 @@ export default async function CollectionPage({ params }: CollectionPageProps) {
   const isOwningArtist = user?.id === artist.user_id
 
   // Build thumbnail URLs — use stored thumbnail_url, else derive from storage_path
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
   const rawArtwork = col.artwork as Array<CollectionData['artwork'][number] & { storage_path: string | null }>
   const artworkWithThumbnails = rawArtwork.map((a) => ({
     ...a,
-    thumbnail_url:
-      a.thumbnail_url ??
-      (a.storage_path
-        ? `${supabaseUrl}/storage/v1/object/public/artwork-originals/${a.storage_path.split('/').map(encodeURIComponent).join('/')}`
-        : null),
+    thumbnail_url: a.thumbnail_url ?? artworkStorageUrl(a.storage_path),
   }))
 
   // Fetch Shopify prices for all print products in this collection

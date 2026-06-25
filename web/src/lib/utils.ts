@@ -38,3 +38,17 @@ export function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
+
+/**
+ * Build a public Supabase storage URL for artwork-originals.
+ * Accepts either a full https URL (returned as-is) or a relative storage path.
+ * Each path segment is percent-encoded so filenames with spaces, #, etc. work.
+ */
+export function artworkStorageUrl(pathOrUrl: string | null | undefined): string | null {
+  if (!pathOrUrl) return null
+  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl
+  const base = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!base) return null
+  const encoded = pathOrUrl.split('/').map(encodeURIComponent).join('/')
+  return `${base}/storage/v1/object/public/artwork-originals/${encoded}`
+}
