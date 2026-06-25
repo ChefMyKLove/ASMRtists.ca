@@ -79,6 +79,11 @@ function filenameWithoutExt(name: string): string {
   return name.replace(/\.[^.]+$/, '')
 }
 
+function sanitizeStorageName(name: string): string {
+  // Replace spaces and special chars that break storage URLs; keep extension
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_')
+}
+
 // ─── Step indicators ──────────────────────────────────────────────────────────
 
 function StepIndicator({ current }: { current: Step }) {
@@ -361,7 +366,7 @@ export default function UploadPage() {
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
-      const storagePath = `${userId}/${cid}/${i + 1}_${f.file.name}`
+      const storagePath = `${userId}/${cid}/${i + 1}_${sanitizeStorageName(f.file.name)}`
 
       setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, status: 'uploading' } : x)))
 
