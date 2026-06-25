@@ -123,8 +123,8 @@ export default async function ArtistPage({ params }: ArtistPageProps) {
     const first = visibleArtworks[0]
     const coverImageUrl =
       getStorageUrl(col.cover_image_url as string | null) ||
-      first?.thumbnail_url ||
-      (first?.storage_path ? getStorageUrl(first.storage_path) : null)
+      getStorageUrl(first?.thumbnail_url ?? null) ||
+      getStorageUrl(first?.storage_path ?? null)
     return {
       id: col.id as string,
       title: col.title as string,

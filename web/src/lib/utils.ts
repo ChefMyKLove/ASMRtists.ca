@@ -46,9 +46,14 @@ export function formatFileSize(bytes: number): string {
  */
 export function artworkStorageUrl(pathOrUrl: string | null | undefined): string | null {
   if (!pathOrUrl) return null
-  if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) return pathOrUrl
+  const trimmed = pathOrUrl.trim()
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL
   if (!base) return null
-  const encoded = pathOrUrl.split('/').map(encodeURIComponent).join('/')
+  // Decode each segment first to prevent double-encoding paths that already contain %XX sequences
+  const normalized = trimmed.split('/').map((seg) => {
+    try { return decodeURIComponent(seg) } catch { return seg }
+  }).join('/')
+  const encoded = normalized.split('/').map(encodeURIComponent).join('/')
   return `${base}/storage/v1/object/public/artwork-originals/${encoded}`
 }

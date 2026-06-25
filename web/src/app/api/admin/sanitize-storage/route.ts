@@ -74,10 +74,28 @@ export async function POST() {
     .select('id, cover_image_url')
     .not('cover_image_url', 'is', null)
 
+  const supabaseBase = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+  const storagePrefix = `${supabaseBase}/storage/v1/object/public/artwork-originals/`
+
   for (const col of collections ?? []) {
     const cur = col.cover_image_url as string
+
+    // Case 1: relative path stored directly
     if (oldToNew.has(cur)) {
       await admin.from('collections').update({ cover_image_url: oldToNew.get(cur) }).eq('id', col.id)
+      continue
+    }
+
+    // Case 2: full URL stored — decode the path portion and compare
+    if (cur.startsWith(storagePrefix)) {
+      const pathPart = cur.slice(storagePrefix.length)
+      let decodedPath: string
+      try { decodedPath = decodeURIComponent(pathPart) } catch { decodedPath = pathPart }
+      if (oldToNew.has(decodedPath)) {
+        const newRelPath = oldToNew.get(decodedPath)!
+        const newUrl = `${storagePrefix}${newRelPath.split('/').map(encodeURIComponent).join('/')}`
+        await admin.from('collections').update({ cover_image_url: newUrl }).eq('id', col.id)
+      }
     }
   }
 
