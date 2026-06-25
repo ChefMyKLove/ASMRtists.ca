@@ -2,10 +2,6 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import sharp from 'sharp'
-import { inscribeWithRetry } from '@/lib/bsv/inscribe'
-import { verifyOwnership } from '@/lib/bsv/auth'
-import { deliverOrdinalFromEscrow, getPlatformEscrowAddress, verifyPaymentSplit } from '@/lib/bsv/marketplace'
 
 // ─── Revenue split constants ──────────────────────────────────────────────────
 // Applied on ALL ordinal sales (initial + resale) through the platform escrow.
@@ -137,6 +133,7 @@ export async function prepareOrdinalAction(
   }
 
   // Convert PNG → JPEG, stepping quality down until under JPEG_MAX_BYTES
+  const sharp = (await import('sharp')).default
   const arrayBuffer = await fileData.arrayBuffer()
   let quality = 85
   let jpegBuffer: Buffer
@@ -226,6 +223,7 @@ export async function mintOrdinalAction(
   await admin.from('artwork').update({ status: 'minting' }).eq('id', artworkId)
 
   try {
+    const { inscribeWithRetry } = await import('@/lib/bsv/inscribe')
     const result = await inscribeWithRetry({
       jpegData: jpegBuffer,
       recipientAddress: recipientOrdAddress,
@@ -270,6 +268,7 @@ export async function createListingAction(
   // depending on which address was active when it was minted.
   const uniqueCandidates = [...new Set([sellerOrdAddress, ...(sellerBsvAddress ? [sellerBsvAddress] : [])])]
 
+  const { verifyOwnership } = await import('@/lib/bsv/auth')
   let confirmedAddress: string | null = null
   for (const addr of uniqueCandidates) {
     if (await verifyOwnership(inscriptionOutpoint, addr)) {
@@ -307,9 +306,10 @@ export async function createListingAction(
     return { ok: false, error: 'An active listing already exists for this ordinal' }
   }
 
+  const { getPlatformEscrowAddress: getEscrowAddr } = await import('@/lib/bsv/marketplace')
   let escrowAddress: string
   try {
-    escrowAddress = getPlatformEscrowAddress()
+    escrowAddress = getEscrowAddr()
   } catch {
     return { ok: false, error: 'Platform escrow is not configured' }
   }
@@ -368,6 +368,7 @@ export async function cancelListingAction(
       .map((l) => l.escrow_txid as string)
       .filter(Boolean)
 
+    const { deliverOrdinalFromEscrow } = await import('@/lib/bsv/marketplace')
     try {
       await deliverOrdinalFromEscrow(listing.escrow_txid, sellerOrdAddress, otherEscrowTxids)
     } catch (err) {
@@ -441,9 +442,10 @@ export async function getListingSplitAction(listingId: string): Promise<{
 
   if (!listing) return { ok: false, error: 'Listing not found or not active' }
 
+  const { getPlatformEscrowAddress: getEscrowAddrSplit } = await import('@/lib/bsv/marketplace')
   let platformAddress: string
   try {
-    platformAddress = getPlatformEscrowAddress()
+    platformAddress = getEscrowAddrSplit()
   } catch {
     return { ok: false, error: 'Platform not configured for payments' }
   }
@@ -513,7 +515,8 @@ export async function purchaseListingAction(
   }
 
   // Verify all three split outputs are present in the payment tx
-  const platformAddress = getPlatformEscrowAddress()
+  const { getPlatformEscrowAddress: getEscrowAddrPurchase, verifyPaymentSplit } = await import('@/lib/bsv/marketplace')
+  const platformAddress = getEscrowAddrPurchase()
   const curatorAddress = process.env.CURATOR_TREASURY_ADDRESS ?? platformAddress
   const totalSats = Math.max(3, Math.floor(Number(listing.price_mnee)))
   const sellerSats = Math.max(1, Math.floor(totalSats * SELLER_SHARE))
@@ -551,8 +554,9 @@ export async function purchaseListingAction(
     .update({ status: 'processing', updated_at: new Date().toISOString() })
     .eq('id', listingId)
 
+  const { deliverOrdinalFromEscrow: deliverOrdinal } = await import('@/lib/bsv/marketplace')
   try {
-    const saleTxid = await deliverOrdinalFromEscrow(listing.escrow_txid, buyerOrdAddress, otherEscrowTxids)
+    const saleTxid = await deliverOrdinal(listing.escrow_txid, buyerOrdAddress, otherEscrowTxids)
 
     await admin
       .from('ordinal_listings')
