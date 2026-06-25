@@ -46,13 +46,13 @@ function truncateOutpoint(outpoint: string, chars = 10): string {
     : outpoint
 }
 
-function getShopUrl(artwork: CollectionArtwork): string {
+function getShopUrl(artwork: CollectionArtwork): string | null {
   const products = artwork.print_products ?? []
   const preferred = products.find((p) => p.product_type === 'canvas') ?? products[0]
   if (preferred?.shopify_product_handle) {
     return `https://canvas-cosmic-cart.chefmyklove.workers.dev/product/${preferred.shopify_product_handle}?embed=1`
   }
-  return `https://canvas-cosmic-cart.chefmyklove.workers.dev/search?q=${encodeURIComponent(artwork.title)}`
+  return null
 }
 
 function getArtworkPrice(
@@ -215,7 +215,9 @@ export function CollectionPageClient({
   )
 
   function openShopModal(artwork: CollectionArtwork) {
-    setShopUrl(getShopUrl(artwork))
+    const url = getShopUrl(artwork)
+    if (!url) return
+    setShopUrl(url)
     setShopTitle(`${artwork.title} — Print`)
     setShopModalOpen(true)
   }
@@ -575,9 +577,10 @@ export function CollectionPageClient({
                 <Button
                   onClick={() => openShopModal(selectedArtwork)}
                   className="w-full bg-white text-black hover:bg-white/90"
+                  disabled={!getShopUrl(selectedArtwork)}
                 >
                   <Printer className="h-4 w-4 mr-2" />
-                  Buy Print
+                  {getShopUrl(selectedArtwork) ? 'Buy Print' : 'Print Coming Soon'}
                 </Button>
               </div>
             </div>
