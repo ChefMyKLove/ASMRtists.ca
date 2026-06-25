@@ -6,9 +6,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 // ─── Revenue split constants ──────────────────────────────────────────────────
 // Applied on ALL ordinal sales (initial + resale) through the platform escrow.
 // Royalties are enforced at delivery time — no BSV protocol support required.
-export const SELLER_SHARE  = 0.75  // artist on primary sale, collector on resale
-export const CURATOR_SHARE = 0.15  // routes to CURATOR_TREASURY_ADDRESS
-export const PLATFORM_SHARE = 0.10 // routes to platform funding wallet
+const SELLER_SHARE  = 0.75  // artist on primary sale, collector on resale
+const CURATOR_SHARE = 0.15  // routes to CURATOR_TREASURY_ADDRESS
+const PLATFORM_SHARE = 0.10 // routes to platform funding wallet
 
 const JPEG_MAX_BYTES = 400 * 1024 // 400 KB
 
