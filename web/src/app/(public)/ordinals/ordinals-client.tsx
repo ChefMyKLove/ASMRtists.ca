@@ -520,7 +520,7 @@ function OwnedOrdinalCard({
           <p className="font-medium text-sm truncate">{item.title}</p>
           <p className="text-xs text-muted-foreground truncate">
             by{' '}
-            <Link href={`/c/${item.artist.username}`} className="hover:text-white transition-colors">
+            <Link href={`/artists/${item.artist.username}`} className="hover:text-white transition-colors">
               {item.artist.displayName}
             </Link>
           </p>
@@ -803,7 +803,7 @@ function ListingCard({
           <p className="text-xs text-muted-foreground truncate">
             by{' '}
             <Link
-              href={`/c/${listing.artwork.artist.username}`}
+              href={`/artists/${listing.artwork.artist.username}`}
               className="hover:text-white transition-colors"
             >
               {listing.artwork.artist.displayName}
