@@ -18,6 +18,7 @@ import {
   uploadImageByBase64,
   createProduct,
   publishProduct,
+  getProduct,
   getBlueprintVariants,
 } from '@/lib/printify/client'
 
@@ -169,6 +170,17 @@ export async function POST(req: NextRequest) {
 
       // Publish to Shopify
       await publishProduct(product.id)
+
+      // Fetch the Shopify handle from Printify after publishing
+      try {
+        const published = await getProduct(product.id)
+        const shopifyHandle = published.external?.handle
+        if (shopifyHandle) {
+          await admin.from('print_products').update({ shopify_product_handle: shopifyHandle }).eq('printify_product_id', product.id)
+        }
+      } catch {
+        // Non-fatal — handle can be backfilled later
+      }
 
       await admin.from('artwork').update({ status: 'shop_ready' }).eq('id', artworkId)
       results.printify = product.id

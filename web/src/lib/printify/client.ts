@@ -157,6 +157,20 @@ export async function publishProduct(
   })
 }
 
+export interface PrintifyProductExternal {
+  id: string
+  handle: string
+}
+
+export interface PrintifyProductFull extends PrintifyProduct {
+  external?: PrintifyProductExternal
+}
+
+/** Fetch a Printify product by ID — includes external.handle after publishing to Shopify. */
+export async function getProduct(productId: string): Promise<PrintifyProductFull> {
+  return pfy<PrintifyProductFull>(`/shops/${shopId()}/products/${productId}.json`)
+}
+
 // ─── Blueprint helpers ────────────────────────────────────────────────────────
 
 export interface PrintifyBlueprintVariant {
