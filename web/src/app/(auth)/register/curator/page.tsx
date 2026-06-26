@@ -15,6 +15,7 @@ import { MultiStepForm } from '@/components/auth/multi-step-form'
 import { createClient } from '@/lib/supabase/client'
 import { generateWallet } from '@/lib/bsv/wallet'
 import type { WalletResult } from '@/lib/bsv/wallet'
+import { addCuratorRole } from '@/app/actions/register'
 import { cn } from '@/lib/utils'
 
 const accountSchema = z
@@ -78,7 +79,7 @@ const TIERS = [
     id: 'institution',
     name: 'Institution',
     price: 299,
-    collections: 20,
+    collections: -1,
     revenueShare: 10,
     galleries: -1,
     popular: false,
@@ -92,7 +93,7 @@ export default function RegisterCuratorPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [selectedTier, setSelectedTier] = useState<string>('free')
-  const [pendingAccount, setPendingAccount] = useState<AccountValues | null>(null)
+  const [signedUpUserId, setSignedUpUserId] = useState<string | null>(null)
   const [wallet, setWallet] = useState<WalletResult | null>(null)
   const [seedVisible, setSeedVisible] = useState(false)
   const [seedConfirmed, setSeedConfirmed] = useState(false)
@@ -130,8 +131,30 @@ export default function RegisterCuratorPage() {
     accountForm.setValue('username', sanitized, { shouldValidate: true })
   }
 
-  function onAccountSubmit(values: AccountValues) {
-    setPendingAccount(values)
+  async function onAccountSubmit(values: AccountValues) {
+    setServerError(null)
+    const supabase = createClient()
+    const { data, error } = await supabase.auth.signUp({
+      email: values.email,
+      password: values.password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        data: {
+          username: values.username,
+          display_name: values.displayName,
+          role: 'curator',
+        },
+      },
+    })
+    if (error) {
+      setServerError(error.message)
+      return
+    }
+    if (!data.session) {
+      setEmailPending(true)
+      return
+    }
+    setSignedUpUserId(data.user?.id ?? null)
     setStep(2)
   }
 
@@ -140,30 +163,20 @@ export default function RegisterCuratorPage() {
   }
 
   async function handleTierContinue() {
-    if (!pendingAccount) return
+    if (!signedUpUserId) return
     setServerError(null)
     setTierLoading(true)
     try {
-      const supabase = createClient()
-      const { data, error } = await supabase.auth.signUp({
-        email: pendingAccount.email,
-        password: pendingAccount.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-          data: {
-            username: pendingAccount.username,
-            display_name: pendingAccount.displayName,
-            role: 'curator',
-            curator_tier: selectedTier,
-          },
-        },
-      })
-      if (error) {
-        setServerError(error.message)
-        return
-      }
-      if (!data.session) {
-        setEmailPending(true)
+      const profileValues = profileForm.getValues()
+      const { error: profileError } = await addCuratorRole(
+        signedUpUserId,
+        profileValues.orgName,
+        profileValues.bio || null,
+        profileValues.website || null,
+        selectedTier,
+      )
+      if (profileError) {
+        setServerError(profileError)
         return
       }
       setStep(4)
@@ -366,7 +379,7 @@ export default function RegisterCuratorPage() {
                 <h3 className="font-semibold">Check your inbox</h3>
                 <p className="text-sm text-muted-foreground">
                   We sent a confirmation link to{' '}
-                  <strong className="text-white">{pendingAccount?.email}</strong>.
+                  <strong className="text-white">{accountForm.getValues('email')}</strong>.
                   Click it to activate your account.
                 </p>
               </div>
@@ -414,13 +427,13 @@ export default function RegisterCuratorPage() {
                       ) : (
                         <>
                           <span className="rainbow-text">${tier.price}</span>
-                          <span className="text-xs text-muted-foreground font-normal">/mo</span>
+                          <span className="text-xs text-muted-foreground font-normal">/yr</span>
                         </>
                       )}
                     </p>
                     <ul className="mt-3 space-y-1.5">
                       <li className="text-xs text-muted-foreground">
-                        {tier.collections} collection{tier.collections !== 1 ? 's' : ''}
+                        {tier.collections === -1 ? '∞ collections' : `${tier.collections} collection${tier.collections !== 1 ? 's' : ''}`}
                       </li>
                       <li className="text-xs text-muted-foreground">
                         {tier.revenueShare > 0

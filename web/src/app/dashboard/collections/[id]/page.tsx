@@ -335,7 +335,8 @@ export default async function CollectionDetailPage({ params }: PageProps) {
                       <form
                         action={async () => {
                           'use server'
-                          await setCollectionCoverImageAction(id, imgUrl)
+                          const result = await setCollectionCoverImageAction(id, imgUrl)
+                          if (result.error) throw new Error(result.error)
                         }}
                       >
                         <button

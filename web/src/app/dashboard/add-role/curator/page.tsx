@@ -29,7 +29,7 @@ const TIERS = [
   { id: 'free', name: 'Explorer', price: 0, collections: 1, revenueShare: 0, galleries: 0 },
   { id: 'emerging', name: 'Emerging', price: 29, collections: 2, revenueShare: 5, galleries: 1 },
   { id: 'gallery', name: 'Gallery', price: 99, collections: 5, revenueShare: 8, galleries: 3, popular: true },
-  { id: 'institution', name: 'Institution', price: 299, collections: 20, revenueShare: 10, galleries: -1 },
+  { id: 'institution', name: 'Institution', price: 299, collections: -1, revenueShare: 10, galleries: -1 },
 ]
 
 const STEPS = ['Profile', 'Choose Tier', 'BSV Wallet']
@@ -193,13 +193,13 @@ export default function AddCuratorRolePage() {
                       ) : (
                         <>
                           <span className="rainbow-text">${tier.price}</span>
-                          <span className="text-xs text-muted-foreground font-normal">/mo</span>
+                          <span className="text-xs text-muted-foreground font-normal">/yr</span>
                         </>
                       )}
                     </p>
                     <ul className="mt-3 space-y-1.5">
                       <li className="text-xs text-muted-foreground">
-                        {tier.collections} collection{tier.collections !== 1 ? 's' : ''}
+                        {tier.collections === -1 ? '∞ collections' : `${tier.collections} collection${tier.collections !== 1 ? 's' : ''}`}
                       </li>
                       <li className="text-xs text-muted-foreground">
                         {tier.revenueShare > 0 ? `${tier.revenueShare}% revenue share` : 'No revenue share'}

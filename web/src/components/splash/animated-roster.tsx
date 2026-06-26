@@ -24,11 +24,11 @@ export function AnimatedRoster() {
   }, [])
 
   return (
-    <p ref={ref} className="text-base uppercase tracking-[0.45em] mb-4">
+    <p ref={ref} className="text-2xl uppercase tracking-[0.45em] mb-4">
       {chars.map(({ char, isFirst }, i) => (
         <span
           key={i}
-          className={cn('letter-slide-in rainbow-text', isFirst && 'text-2xl font-bold')}
+          className={cn('letter-slide-in rainbow-text', isFirst && 'text-4xl font-bold')}
           style={{ animationDelay: `${i * 0.05}s` }}
         >
           {char}

@@ -49,7 +49,7 @@ export async function addCuratorRole(
   const { error: profileError } = await supabase
     .from('curator_profiles')
     .upsert(
-      { user_id: userId, org_name: orgName, bio, website, tier },
+      { user_id: userId, organization: orgName, bio, website, tier },
       { onConflict: 'user_id' }
     )
 

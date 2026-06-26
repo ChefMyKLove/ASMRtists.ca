@@ -175,7 +175,7 @@ export default async function HomePage() {
 
         <AnimatedRoster />
 
-        <h1 className="text-4xl sm:text-5xl font-bold leading-tight mb-4">
+        <h1 className="text-5xl sm:text-6xl font-bold leading-tight mb-4">
           A place where your art finds its people.
         </h1>
 
@@ -240,7 +240,7 @@ export default async function HomePage() {
           {[
             { label: 'Browse Collections', href: '/browse' },
             { label: 'Browse Artists',     href: '/browse' },
-            { label: 'Browse Curations',   href: '/ordinals' },
+            { label: 'Browse Curators',    href: '/curators' },
           ].map(({ label, href }) => (
             <Link
               key={label}

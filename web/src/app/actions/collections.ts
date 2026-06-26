@@ -315,13 +315,18 @@ export async function setCollectionCoverImageAction(
     .single()
   if (!ap) return { error: 'Artist profile not found' }
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from('collections')
     .update({ cover_image_url: coverImageUrl })
     .eq('id', collectionId)
     .eq('artist_id', ap.id)
+    .select('id')
 
   if (error) return { error: error.message }
+  if (!updated?.length) return { error: 'Collection not found or not owned by this artist' }
+
+  revalidatePath(`/dashboard/collections/${collectionId}`)
+  revalidatePath('/')
   return { error: null }
 }
 
