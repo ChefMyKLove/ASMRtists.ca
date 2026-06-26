@@ -181,8 +181,8 @@ export default async function HomePage() {
 
         <p className="text-base text-muted-foreground font-light leading-relaxed mb-8 max-w-lg">
           ASMRtists represents independent artists — prints fulfilled on demand,
-          digital artifacts on-chain, and a community of collectors who grow
-          alongside the artists they love.
+          digital artifacts on-chain, and a community of curators and collectors
+          who grow alongside the artists they love.
         </p>
 
         {/* Role cards — compact 3-col on desktop left, single col on mobile */}
