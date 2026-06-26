@@ -8,12 +8,20 @@ GET  /health                         — Railway health check
 import os
 import requests as req
 from fastapi import FastAPI, Header, HTTPException, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
 import printify_pipeline as pipeline
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://www.asmrtists.ca", "https://asmrtists.ca"],
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type", "x-pipeline-secret"],
+)
 
 SECRET = os.environ.get("PIPELINE_WEBHOOK_SECRET", "")
 
