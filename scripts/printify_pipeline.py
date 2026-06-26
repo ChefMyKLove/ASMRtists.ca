@@ -48,10 +48,7 @@ PROVIDERS = {
         "blueprint_id":      804,   # Fine Art Posters
         "print_provider_id": 72,    # Print Clever
     },
-    "photo": {
-        "blueprint_id":      494,   # Giclee Art Print
-        "print_provider_id": 36,    # Print Pigeons
-    },
+    # "photo" (Giclee, blueprint 494 / provider 36) removed — provider no longer available
 }
 
 ASMR_COMMISSION_PCT = float(os.environ.get("ASMR_COMMISSION_PCT", "30"))
@@ -323,14 +320,16 @@ def process_artwork(artwork):
 
         for shop_id in PRINTIFY_SHOP_IDS:
             print(f"\n  [shop {shop_id}]")
-            for product_type in ("canvas", "poster", "photo"):
+            for product_type in PROVIDERS:
                 print(f"  -> Creating {product_type} product...")
-                pid = create_printify_product(shop_id, artwork, product_type, printify_image_id)
-                publish_product(shop_id, pid)
-                # Save to print_products using the Shopify shop as the canonical record
-                if shop_id == shopify_shop_id:
-                    shopify_handle = get_shopify_handle(shop_id, pid)
-                    save_print_product(artwork_id, product_type, pid, printify_image_id, shopify_handle)
+                try:
+                    pid = create_printify_product(shop_id, artwork, product_type, printify_image_id)
+                    publish_product(shop_id, pid)
+                    if shop_id == shopify_shop_id:
+                        shopify_handle = get_shopify_handle(shop_id, pid)
+                        save_print_product(artwork_id, product_type, pid, printify_image_id, shopify_handle)
+                except Exception as product_err:
+                    print(f"  ! Skipping {product_type}: {product_err}")
                 time.sleep(0.5)
 
         update_artwork_status(artwork_id, "shop_ready", {"printify_image_id": printify_image_id})
