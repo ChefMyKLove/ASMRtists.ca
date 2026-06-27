@@ -38,12 +38,7 @@ export default async function CuratorsPage() {
       if (!profile?.username) return null
       return { ...cp, profile }
     })
-    .filter(Boolean) as NonNullable<ReturnType<typeof mapCurator>>[]
-
-  function mapCurator(cp: (typeof curatorProfiles)[number], profile: (typeof profiles)[number]) {
-    return { ...cp, profile }
-  }
-  void mapCurator
+    .filter((c): c is NonNullable<typeof c> => c !== null)
 
   return (
     <div className="mx-auto max-w-7xl px-4 sm:px-6 py-12">

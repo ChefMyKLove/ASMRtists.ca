@@ -203,7 +203,7 @@ export default function RegisterCollectorPage() {
                 <Input
                   id="username"
                   placeholder="your-username"
-                  autoComplete="username"
+                  autoComplete="off"
                   className="bg-white/5 border-white/10"
                   {...register('username', { onBlur: handleUsernameBlur })}
                 />

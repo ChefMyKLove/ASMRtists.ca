@@ -14,10 +14,14 @@ export default async function ProfilePage() {
   const admin = createAdminClient()
 
   // Fetch all profile data in parallel
-  const [profileRes, artistRes, walletRes, ordWalletRes, rolesRes] = await Promise.all([
+  const [profileRes, artistRes, curatorRes, walletRes, ordWalletRes, rolesRes] = await Promise.all([
     admin.from('profiles').select('*').eq('id', user.id).single(),
     admin.from('artist_profiles')
       .select('stage_name, bio, avatar_url, banner_url, location, status, piece_count')
+      .eq('user_id', user.id)
+      .maybeSingle(),
+    admin.from('curator_profiles')
+      .select('id, status')
       .eq('user_id', user.id)
       .maybeSingle(),
     admin.from('wallets')
@@ -39,15 +43,17 @@ export default async function ProfilePage() {
   if (!profile) notFound()
 
   const artistProfile = artistRes.data ?? null
+  const curatorProfile = curatorRes.data ?? null
   const wallet = walletRes.data ?? null
   const ordWallet = ordWalletRes.data ?? null
   const rawRoles = rolesRes.data ?? []
-  // If the user has an artist profile, ensure the artist role badge shows
-  // even if the user_roles row hasn't been inserted yet.
-  const userRoles =
-    artistProfile && !rawRoles.some((r) => r.role === 'artist')
-      ? [...rawRoles, { role: 'artist', status: 'active' }]
-      : rawRoles
+
+  // If role profile rows exist but user_roles is out of sync, fill in the gap.
+  let userRoles = rawRoles
+  if (artistProfile && !rawRoles.some((r) => r.role === 'artist'))
+    userRoles = [...userRoles, { role: 'artist', status: 'active' }]
+  if (curatorProfile?.status === 'active' && !rawRoles.some((r) => r.role === 'curator'))
+    userRoles = [...userRoles, { role: 'curator', status: 'active' }]
 
   const socialLinks = (profile.social_links as Record<string, string> | null) ?? {}
 

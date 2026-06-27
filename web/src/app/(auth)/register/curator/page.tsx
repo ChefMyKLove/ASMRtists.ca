@@ -299,7 +299,7 @@ export default function RegisterCuratorPage() {
                 <Input
                   id="username"
                   placeholder="your-username"
-                  autoComplete="username"
+                  autoComplete="off"
                   className="bg-white/5 border-white/10"
                   {...accountForm.register('username', { onBlur: handleUsernameBlur })}
                 />

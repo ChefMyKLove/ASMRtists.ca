@@ -21,6 +21,7 @@ ALTER TABLE public.curator_profiles
 
 ALTER TABLE public.curator_profiles
   ADD COLUMN IF NOT EXISTS username         TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS website          TEXT,
   ADD COLUMN IF NOT EXISTS tier             TEXT NOT NULL DEFAULT 'free'
                                             CHECK (tier IN ('free', 'pro', 'enterprise')),
   ADD COLUMN IF NOT EXISTS is_admin_curator BOOLEAN NOT NULL DEFAULT false;
