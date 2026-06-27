@@ -168,18 +168,46 @@ export default function RegisterCuratorPage() {
     setTierLoading(true)
     try {
       const profileValues = profileForm.getValues()
+      const isFree = selectedTier === 'free'
+
+      // Always save the curator profile row (pending for paid tiers until Stripe confirms)
       const { error: profileError } = await addCuratorRole(
         signedUpUserId,
         profileValues.orgName,
         profileValues.bio || null,
         profileValues.website || null,
         selectedTier,
+        isFree, // activate immediately only for free tier
       )
       if (profileError) {
         setServerError(profileError)
         return
       }
-      setStep(4)
+
+      if (isFree) {
+        setStep(4)
+        return
+      }
+
+      // Paid tier — redirect to Stripe Checkout
+      const res = await fetch('/api/stripe/curator-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: selectedTier }),
+      })
+      const data = await res.json() as { url?: string; pending?: boolean; error?: string }
+
+      if (data.error) { setServerError(data.error); return }
+
+      if (data.pending) {
+        // Stripe not yet configured — show a holding message
+        setServerError('Payment processing is coming soon. Your application has been saved and we\'ll activate your account shortly.')
+        return
+      }
+
+      if (data.url) {
+        window.location.href = data.url
+      }
     } finally {
       setTierLoading(false)
     }

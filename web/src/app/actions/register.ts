@@ -43,13 +43,16 @@ export async function addCuratorRole(
   bio: string | null,
   website: string | null,
   tier: string,
+  activate = true, // false for paid tiers — stays pending until Stripe webhook confirms payment
 ) {
   const supabase = createAdminClient()
+
+  const status = activate ? 'active' : 'pending'
 
   const { error: profileError } = await supabase
     .from('curator_profiles')
     .upsert(
-      { user_id: userId, organization: orgName, bio, website, tier },
+      { user_id: userId, organization: orgName, bio, website, tier, status },
       { onConflict: 'user_id' }
     )
 
@@ -57,9 +60,18 @@ export async function addCuratorRole(
 
   const { error: roleError } = await supabase
     .from('user_roles')
-    .upsert({ user_id: userId, role: 'curator', status: 'active' }, { onConflict: 'user_id,role' })
+    .upsert({ user_id: userId, role: 'curator', status }, { onConflict: 'user_id,role' })
 
   if (roleError) return { error: roleError.message }
+
+  // Only flip active_role immediately for free tier — paid tiers activate via Stripe webhook
+  if (activate) {
+    const { error: activeRoleError } = await supabase
+      .from('profiles')
+      .update({ active_role: 'curator' })
+      .eq('id', userId)
+    if (activeRoleError) return { error: activeRoleError.message }
+  }
 
   return { error: null }
 }

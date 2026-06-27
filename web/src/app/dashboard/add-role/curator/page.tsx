@@ -65,18 +65,38 @@ export default function AddCuratorRolePage() {
   async function handleTierContinue() {
     if (!userId || !pendingProfile) return
     setServerError(null)
+    const isFree = selectedTier === 'free'
     const { error } = await addCuratorRole(
       userId,
       pendingProfile.orgName,
       pendingProfile.bio || null,
       pendingProfile.website || null,
       selectedTier,
+      isFree,
     )
     if (error) {
       setServerError(error)
       return
     }
-    setStep(3)
+
+    if (isFree) {
+      setStep(3)
+      return
+    }
+
+    // Paid tier — redirect to Stripe Checkout
+    const res = await fetch('/api/stripe/curator-checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier: selectedTier }),
+    })
+    const data = await res.json() as { url?: string; pending?: boolean; error?: string }
+    if (data.error) { setServerError(data.error); return }
+    if (data.pending) {
+      setServerError('Payment processing is coming soon. Your application has been saved.')
+      return
+    }
+    if (data.url) window.location.href = data.url
   }
 
   async function handleSaveWallet() {
